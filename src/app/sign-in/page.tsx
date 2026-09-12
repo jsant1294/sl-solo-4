@@ -3,14 +3,17 @@ import { SiteHeader, SiteFooter } from "@/components/site-chrome";
 import { Section } from "@/components/primitives";
 import { signIn } from "@/lib/auth-config";
 import { safeAppRedirect } from "@/lib/safe-redirect";
+import { AuthError } from "next-auth";
+import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
-export default async function SignIn({ searchParams }: { searchParams: Promise<{ lang?: string; sent?: string; next?: string }> }) {
+export default async function SignIn({ searchParams }: { searchParams: Promise<{ lang?: string; sent?: string; next?: string; error?: string }> }) {
   const query = await searchParams;
   const locale = localeFrom(query);
   const es = locale === "es";
   const next = safeAppRedirect(query.next);
   const isOperator = next === "/operator" || next.startsWith("/operator/");
+  const badCredentials = query.error === "credentials";
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader locale={locale} />
@@ -25,10 +28,18 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<{
               const email = String(formData.get("email") ?? "").trim();
               const password = String(formData.get("password") ?? "");
               const next = safeAppRedirect(formData.get("next"));
-              await signIn("credentials", { email, password, redirectTo: next });
+              try {
+                await signIn("credentials", { email, password, redirectTo: next });
+              } catch (error) {
+                if (error instanceof AuthError) {
+                  redirect(`/sign-in?next=${encodeURIComponent(next)}&error=credentials`);
+                }
+                throw error;
+              }
             }}>
               <input type="email" name="email" required autoComplete="username" placeholder={es ? "correo@operator" : "operator@email"} className="rounded-lg border border-line bg-bg-raised px-4 py-3 text-sm outline-none focus:border-gold"/>
               <input type="password" name="password" required autoComplete="current-password" placeholder={es ? "Contraseña" : "Password"} className="rounded-lg border border-line bg-bg-raised px-4 py-3 text-sm outline-none focus:border-gold"/>
+              {badCredentials && <p className="text-sm text-red-600">{es ? "Correo o contraseña incorrectos." : "Incorrect email or password."}</p>}
               <input type="hidden" name="next" value={next}/>
               <button className="rounded-full bg-ink text-bg px-6 py-3 text-sm font-medium hover:bg-gold transition-colors">{es ? "Entrar" : "Sign in"}</button>
             </form>
