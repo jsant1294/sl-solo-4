@@ -11,7 +11,7 @@ export function launchConfiguration(env: NodeJS.ProcessEnv = process.env): Launc
   add("database", Boolean(env.DATABASE_URL), "DATABASE_URL is required");
   add("auth_secret", Boolean(env.AUTH_SECRET && env.AUTH_SECRET.length >= 32), "AUTH_SECRET must contain at least 32 characters");
   add("email", Boolean(env.AUTH_RESEND_KEY && env.EMAIL_FROM && !env.EMAIL_FROM.includes("onboarding@resend.dev")), "Resend key and a verified production sender are required");
-  add("operator", Boolean(env.OPERATOR_EMAIL), "OPERATOR_EMAIL is required");
+  add("operator", Boolean(env.OPERATOR_EMAIL && env.OPERATOR_PASSWORD), "OPERATOR_EMAIL and OPERATOR_PASSWORD are required");
   add("support", Boolean(env.SUPPORT_EMAIL), "SUPPORT_EMAIL is required");
   add("webhook", Boolean(env.STRIPE_WEBHOOK_SECRET?.startsWith("whsec_")), "Production Stripe webhook secret is required");
   add("cron", Boolean(env.CRON_SECRET && env.CRON_SECRET.length >= 24), "CRON_SECRET must contain at least 24 characters");

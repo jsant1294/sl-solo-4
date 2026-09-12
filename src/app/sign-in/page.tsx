@@ -19,7 +19,19 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<{
           <>
             <p className="font-mono text-[0.65rem] uppercase tracking-widest text-gold mb-2">SnapLink · Operator</p>
             <h1 className="font-display text-3xl font-semibold tracking-tight">{es ? "Acceso autorizado" : "Authorized access"}</h1>
-            <p className="text-ink-soft mt-3 text-sm">{query.sent ? (es ? "Revisa tu correo para continuar." : "Check your email to continue.") : (es ? "Solo para personal interno de SnapLink." : "Internal SnapLink staff only.")}</p>
+            <p className="text-ink-soft mt-3 text-sm">{es ? "Solo para personal interno de SnapLink." : "Internal SnapLink staff only."}</p>
+            <form className="grid gap-3 mt-8 text-left" action={async (formData) => {
+              "use server";
+              const email = String(formData.get("email") ?? "").trim();
+              const password = String(formData.get("password") ?? "");
+              const next = safeAppRedirect(formData.get("next"));
+              await signIn("credentials", { email, password, redirectTo: next });
+            }}>
+              <input type="email" name="email" required autoComplete="username" placeholder={es ? "correo@operator" : "operator@email"} className="rounded-lg border border-line bg-bg-raised px-4 py-3 text-sm outline-none focus:border-gold"/>
+              <input type="password" name="password" required autoComplete="current-password" placeholder={es ? "Contraseña" : "Password"} className="rounded-lg border border-line bg-bg-raised px-4 py-3 text-sm outline-none focus:border-gold"/>
+              <input type="hidden" name="next" value={next}/>
+              <button className="rounded-full bg-ink text-bg px-6 py-3 text-sm font-medium hover:bg-gold transition-colors">{es ? "Entrar" : "Sign in"}</button>
+            </form>
           </>
         ) : (
           <>
@@ -27,7 +39,7 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<{
             <p className="text-ink-soft mt-3 text-sm">{query.sent ? (es ? "Revisa tu correo para continuar." : "Check your email to continue.") : (es ? "Te enviaremos un enlace seguro por correo." : "We’ll email you a secure sign-in link.")}</p>
           </>
         )}
-        {!query.sent && <form className="grid gap-3 mt-8" action={async (formData) => {
+        {!isOperator && !query.sent && <form className="grid gap-3 mt-8" action={async (formData) => {
           "use server";
           const email = String(formData.get("email") ?? "").trim();
           const next = safeAppRedirect(formData.get("next"));

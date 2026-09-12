@@ -5,7 +5,7 @@ import { safeAppRedirect } from "@/lib/safe-redirect";
 const valid = {
   NEXT_PUBLIC_APP_URL: "https://solo.example.com", DATABASE_URL: "postgresql://example", AUTH_SECRET: "a".repeat(32),
   AUTH_RESEND_KEY: "re_example", EMAIL_FROM: "SOLO <orders@solo.example.com>", OPERATOR_EMAIL: "ops@example.com",
-  SUPPORT_EMAIL: "support@example.com", STRIPE_WEBHOOK_SECRET: "whsec_example", CRON_SECRET: "c".repeat(24),
+  SUPPORT_EMAIL: "support@example.com", OPERATOR_PASSWORD: "op-secret", STRIPE_WEBHOOK_SECRET: "whsec_example", CRON_SECRET: "c".repeat(24),
   STRIPE_SECRET_KEY: "sk_live_example", STRIPE_MODE: "live", SOLO_SHIPPING_POLICY: "free", PUBLIC_LIVE_PAYMENTS_ENABLED: "true",
 } as unknown as NodeJS.ProcessEnv;
 
