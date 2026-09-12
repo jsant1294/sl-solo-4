@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   SL / SOLO — DESIGN TOKENS
+   One source of truth. Do not scatter arbitrary styles.
+   Palette: obsidian / ivory / signature gold
+   ============================================================ */
+
+:root {
+  /* — Surface: Ivory (default light) — */
+  --bg: 42 33% 97%;          /* #F8F6F1 ivory */
+  --bg-raised: 0 0% 100%;
+  --bg-sunken: 40 20% 94%;
+  --ink: 24 10% 10%;         /* near-black warm */
+  --ink-soft: 24 6% 34%;
+  --ink-faint: 24 5% 55%;
+  --line: 30 12% 88%;
+  --line-strong: 30 10% 78%;
+
+  /* — Signature Gold — used with restraint — */
+  --gold: 41 46% 48%;        /* #B78A32 muted editorial gold */
+  --gold-bright: 43 62% 56%;
+  --gold-ink: 40 55% 22%;
+
+  /* — SOLO personality accents — products remain the strongest color — */
+  --coral: 15 62% 55%;
+  --violet: 268 38% 49%;
+  --blue: 217 52% 39%;
+  --aqua: 177 46% 39%;
+  --green: 143 42% 37%;
+  --pink: 335 67% 57%;
+  --yellow: 43 88% 56%;
+
+  /* — Feedback — */
+  --ok: 152 40% 38%;
+  --warn: 28 78% 48%;
+  --err: 6 62% 48%;
+
+  /* — Radius — */
+  --r-sm: 6px;
+  --r-md: 12px;
+  --r-lg: 20px;
+  --r-xl: 32px;
+  --r-full: 999px;
+
+  /* — Spacing scale (rem) — */
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
+  --s-5: 1.5rem; --s-6: 2rem; --s-7: 3rem; --s-8: 4rem;
+  --s-9: 6rem; --s-10: 8rem;
+
+  /* — Type scale — */
+  --t-xs: 0.75rem; --t-sm: 0.875rem; --t-base: 1rem;
+  --t-lg: 1.25rem; --t-xl: 1.5rem; --t-2xl: 2rem;
+  --t-3xl: 2.75rem; --t-4xl: 3.75rem; --t-5xl: 5rem;
+
+  /* — Shadow — restrained, product-lighting feel — */
+  --shadow-sm: 0 1px 2px hsl(24 10% 10% / 0.04), 0 1px 3px hsl(24 10% 10% / 0.06);
+  --shadow-md: 0 4px 12px hsl(24 10% 10% / 0.06), 0 2px 4px hsl(24 10% 10% / 0.04);
+  --shadow-lg: 0 20px 50px hsl(24 10% 10% / 0.10), 0 6px 16px hsl(24 10% 10% / 0.06);
+
+  /* — Motion — */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 140ms;
+  --dur: 260ms;
+  --dur-slow: 520ms;
+
+  /* — Layout — */
+  --maxw: 1180px;
+  --maxw-prose: 680px;
+}
+
+/* — Obsidian (dark) — */
+[data-theme="obsidian"], .theme-obsidian {
+  --bg: 24 8% 7%;            /* #14120F obsidian */
+  --bg-raised: 24 7% 11%;
+  --bg-sunken: 24 9% 5%;
+  --ink: 42 30% 95%;
+  --ink-soft: 40 10% 72%;
+  --ink-faint: 40 6% 50%;
+  --line: 30 8% 20%;
+  --line-strong: 30 8% 28%;
+  --gold: 43 58% 58%;
+  --gold-bright: 44 72% 66%;
+  --gold-ink: 43 60% 80%;
+  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.3);
+  --shadow-md: 0 6px 18px hsl(0 0% 0% / 0.4);
+  --shadow-lg: 0 24px 60px hsl(0 0% 0% / 0.55);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+body {
+  margin: 0;
+  background: hsl(var(--bg));
+  color: hsl(var(--ink));
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: var(--t-base);
+  line-height: 1.55;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.font-display { font-family: var(--font-display), Georgia, serif; }
+.font-mono { font-family: var(--font-mono), ui-monospace, monospace; }
+
+::selection { background: hsl(var(--gold) / 0.25); }
+
+:focus-visible {
+  outline: 2px solid hsl(var(--gold));
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* — reveal-on-load primitive — */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise var(--dur-slow) var(--ease) both; }
+
+/* Honest design previews: production directions, never product photography. */
+.pattern-signature { background: radial-gradient(circle at 25% 25%, hsl(var(--gold-bright)) 0 2px, transparent 3px), linear-gradient(145deg, #18140f, #342717); background-size: 22px 22px, auto; }
+.pattern-color { background: linear-gradient(135deg, #ef6f61 0 25%, #7352a2 25% 50%, #2e83a0 50% 75%, #e6ad31 75%); }
+.pattern-play { background: radial-gradient(circle, hsl(var(--gold-bright)) 0 2px, transparent 3px), linear-gradient(135deg, #063b2a, #175f43); background-size: 24px 24px, auto; }
+.pattern-kids { background: radial-gradient(circle at 20% 25%, #fff8 0 5px, transparent 6px), radial-gradient(circle at 70% 65%, #fff6 0 8px, transparent 9px), linear-gradient(145deg, #ec6fa3, #7352a2); background-size: 52px 52px, 68px 68px, auto; }
