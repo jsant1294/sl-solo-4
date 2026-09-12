@@ -181,14 +181,14 @@ function CmsMediaAccent({ media }: { media: CmsMedia }) {
 }
 
 function HeroBackdrop({ media, mobileMedia, fallback, desktopPosition, mobilePosition }: { media: CmsMedia; mobileMedia: CmsMedia; fallback?: HomeProduct; desktopPosition: string; mobilePosition: string }) {
-  const desktop = media ?? (fallback?.video ? { kind: "video", url: fallback.video.url } : fallback?.image ? { kind: "image", url: fallback.image.url, alt: fallback.image.alt } : null);
+  const desktop = media ?? (fallback?.video ? { kind: "video", url: fallback.video.url, poster: fallback.poster ?? null } : fallback?.image ? { kind: "image", url: fallback.image.url, alt: fallback.image.alt } : null);
   const mobile = mobileMedia ?? desktop;
   return <div className="absolute inset-0"><div className="hidden h-full md:block"><BackgroundAsset media={desktop} position={desktopPosition}/></div><div className="h-full md:hidden"><BackgroundAsset media={mobile} position={mobilePosition}/></div></div>;
 }
 
-function BackgroundAsset({ media, position }: { media: { kind: string; url: string; alt?: string | null } | null; position: string }) {
+function BackgroundAsset({ media, position }: { media: { kind: string; url: string; alt?: string | null; poster?: string | null } | null; position: string }) {
   if (!media) return <div className="h-full bg-[linear-gradient(135deg,#16120e,#6f5428)]"/>;
-  if (media.kind === "video") return <video src={media.url} autoPlay muted loop playsInline preload="metadata" className="h-full w-full object-cover" style={{ objectPosition: position }}/>
+  if (media.kind === "video") return <video src={media.url} poster={media.poster ?? undefined} autoPlay muted loop playsInline preload="metadata" className="h-full w-full object-cover" style={{ objectPosition: position }}/>
   return <img src={media.url} alt={media.alt ?? ""} aria-hidden loading="eager" className="h-full w-full object-cover" style={{ objectPosition: position }}/>;
 }
 
