@@ -169,6 +169,8 @@ export function OperatorControlPlane({ detail: d, devices, events, presentation,
         </div>
       </Box>
 
+      <AppearancePanel d={d} />
+
       {/* ——— Sharing ——— */}
       <Box title="Sharing">
         <ShareForm d={d} initialTitle={shareTitle} initialDescription={shareDescription} shareImageUrl={shareImageUrl} />
@@ -189,6 +191,8 @@ export function OperatorControlPlane({ detail: d, devices, events, presentation,
         <ContactPanel profileId={d.id} profileType={d.type} channels={d.contactChannels} primaryAction={primaryAction} />
         {d.type !== "kids" && <PaymentsPanel profileId={d.id} methods={payments} />}
       </Box>
+
+      <FloatingCtaPanel d={d} />
 
       {/* ——— Devices ——— */}
       <section className={cardCls}>
@@ -664,17 +668,15 @@ function AppearancePanel({ d }: { d: P }) {
   const palette = resolvePalette((d.data ?? {}) as never, d.theme);
   const [layoutKey, setLayoutKey] = useState<ProfileLayoutKey>(layout);
   const [paletteKey, setPaletteKey] = useState<string>(palette.key);
-  const [custom, setCustom] = useState<Record<string, string>>({});
-  const applying = busy;
   const applyIndividual = (fn: () => Promise<OpResult>) => void run(async () => { const r = await fn(); return r; });
   return (
     <Box title="Appearance" action={<span className="text-xs text-ink-faint">layout composes sections; palette sets the brand tokens</span>}>
-      <div className="grid gap-TC-6">
+      <div className="grid gap-6">
         <div>
           <p className="text-xs font-medium text-ink-soft mb-2">Layout</p>
           <div className="grid gap-2 sm:grid-cols-3">
             {PROFILE_LAYOUTS.map((l) => (
-              <button key={l.key} onClick={() => applyIndividual(() => opUpdateLayout(d.id, l.key))} className={`text-left rounded-xl border p-3 transition-colors ${layoutKey === l.key ? "border-gold bg-bg-raised" : "border-line hover:border-gold/50"}`}>
+              <button key={l.key} disabled={busy} onClick={() => { setLayoutKey(l.key); applyIndividual(() => opUpdateLayout(d.id, l.key)); }} className={`text-left rounded-xl border p-3 transition-colors disabled:opacity-50 ${layoutKey === l.key ? "border-gold bg-bg-raised" : "border-line hover:border-gold/50"}`}>
                 <p className="text-sm font-medium">{l.label}</p>{l.description && <p className="mt-1 text-xs leading-relaxed text-ink-soft">{l.description}</p>}
               </button>
             ))}
@@ -683,8 +685,8 @@ function AppearancePanel({ d }: { d: P }) {
         <div>
           <p className="text-xs font-medium text-ink-soft mb-2">Palette</p>
           <div className="grid gap-2 sm:grid-cols-3">
-            {PALETTE_LIST.slice(0, 18).map((pal) => (
-              <button key={pal.key} onClick={() => applyIndividual(() => opUpdatePalette(d.id, pal.key))} className={`text-left rounded-xl border p-3 transition-colors ${paletteKey === pal.key ? "border-gold bg-bg-raised" : "border-line hover:border-gold/50"}`}>
+            {PALETTE_LIST.map((pal) => (
+              <button key={pal.key} disabled={busy} onClick={() => { setPaletteKey(pal.key); applyIndividual(() => opUpdatePalette(d.id, pal.key)); }} className={`text-left rounded-xl border p-3 transition-colors disabled:opacity-50 ${paletteKey === pal.key ? "border-gold bg-bg-raised" : "border-line hover:border-gold/50"}`}>
                 <p className="text-sm font-medium">{pal.name}</p>
                 <div className="mt-2 flex overflow-hidden rounded-md border border-line">{pal.swatches.map((swatch) => <span key={swatch} className="h-3 flex-1" style={{ background: swatch }} />)}</div>
               </button>

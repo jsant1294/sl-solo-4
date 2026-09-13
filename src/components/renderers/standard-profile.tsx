@@ -11,6 +11,7 @@ import { TrackedProfileLink } from "@/components/profile-link";
 import { ProfileQuickActions } from "@/components/profile-quick-actions";
 import { publicPaymentMethods } from "@/lib/payment-methods";
 import { withLang } from "@/i18n/util";
+import { resolvePalette } from "@/lib/profile-palettes";
 
 const themeClass: Record<string, string> = {
   obsidian: "theme-obsidian", ivory: "", signature_gold: "theme-obsidian",
@@ -21,12 +22,12 @@ export function StandardProfile({
   profile, links, contactChannels, locale,
 }: { profile: Profile; links: ProfileLink[]; contactChannels: StoredContactChannel[]; locale: Locale }) {
   const t = getDict(locale);
-  const gold = profile.theme === "signature_gold";
   const initials = profile.displayName.split(" ").map((s) => s[0]).slice(0, 2).join("");
   const category = profile.type === "business"
     ? (profile.data as { category?: string })?.category : null;
   const actions = publicContactActions(profile, contactChannels, "", locale);
   const primary = resolvePrimaryAction(profile, actions);
+  const palette = resolvePalette(profile.data, profile.theme);
   const settings = getProfileExperience(profile.data, profile.id);
   const shareTitle = settings.shareTitle || profile.displayName;
   const shareDescription = settings.shareDescription || profile.headline || profile.bio || (locale === "es" ? "Toca. Conecta. Comparte." : "Tap. Connect. Share.");
@@ -89,12 +90,10 @@ const payments = publicPaymentMethods(settings.paymentMethods, locale);
   };
 
   return (
-    <main className={`min-h-screen ${themeClass[profile.theme]} bg-bg text-ink`}>
+    <main className={`min-h-screen ${themeClass[profile.theme]} bg-bg text-ink`} style={palette.style}>
       <div className="mx-auto max-w-[520px] overflow-x-clip px-4 pb-28 sm:px-5 sm:pb-20">
         <div className="h-28 -mx-4 mb-[-2.5rem] sm:h-40 sm:-mx-5 sm:mb-[-3rem]"
-          style={{ background: gold
-            ? "radial-gradient(130% 130% at 70% 0%, hsl(43 62% 52% / 0.55), transparent 62%)"
-            : "radial-gradient(130% 130% at 70% 0%, hsl(var(--gold) / 0.28), transparent 62%)" }} />
+          style={{ background: "var(--hero)" }} />
 
         {orderedSections.map((section) => blocks[section.id] ?? null)}
 
