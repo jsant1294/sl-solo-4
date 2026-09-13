@@ -12,6 +12,7 @@ export function ContactOrb({ username, actions, primary, shareTitle, shareDescri
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
+  const orbAction = actions.find((action) => action.type === "call") ?? primary;
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +47,7 @@ export function ContactOrb({ username, actions, primary, shareTitle, shareDescri
     if (action.href) window.location.href = action.href;
   }
 
-  return <div className="fixed z-40 right-4 sm:right-6 flex flex-col items-end gap-2" style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+  return <div className="fixed left-1/2 z-40 flex -translate-x-1/2 flex-col items-center gap-2" style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}>
     {open && <div ref={panel} role="dialog" aria-label={t.dialogLabel} className="mb-1 w-[min(19rem,calc(100vw-2rem))] max-h-[min(27rem,65vh)] overflow-y-auto rounded-2xl border border-line bg-bg-raised/95 p-2 shadow-xl backdrop-blur-xl">
       <div className="flex items-center justify-between px-3 py-1"><p className="font-mono text-[0.65rem] uppercase tracking-[0.18em] text-ink-faint">{t.orbTitle}</p><button onClick={() => setOpen(false)} aria-label={t.close} className="h-11 w-11 rounded-full hover:bg-bg-sunken">×</button></div>
       <div className="grid grid-cols-2 gap-1">
@@ -55,9 +56,9 @@ export function ContactOrb({ username, actions, primary, shareTitle, shareDescri
           : <a key={action.type} href={action.href ?? "#"} onClick={() => track(contactEventType(action.type))} className="min-h-12 rounded-xl px-3 py-3 text-sm font-medium text-ink no-underline hover:bg-bg-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold"><ChannelIcon type={action.type}/>{action.label}</a>)}
       </div>
     </div>}
-    <div className="flex items-center gap-2">
-      <button onClick={() => void activate(primary)} aria-label={`${primary.label}, primary contact action`} className="min-h-12 rounded-full bg-ink px-5 text-sm font-semibold text-bg shadow-lg hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"><span className="inline-flex items-center gap-2"><ChannelIcon type={primary.type}/>{primary.label}</span></button>
-      <button onClick={() => { const next = !open; setOpen(next); if (next) track("contact_orb_opened"); }} aria-expanded={open} aria-label={t.more} className="grid h-12 w-12 place-items-center rounded-full border border-line-strong bg-bg-raised text-ink shadow-lg hover:border-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"><DotsIcon/></button>
+    <div className="relative flex items-center justify-center">
+      <button onClick={() => void activate(orbAction)} aria-label={`${orbAction.label}, primary contact action`} className="min-h-12 rounded-full bg-ink px-6 text-sm font-semibold text-bg shadow-lg hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"><span className="inline-flex items-center gap-2"><ChannelIcon type={orbAction.type}/>{orbAction.label}</span></button>
+      <button onClick={() => { const next = !open; setOpen(next); if (next) track("contact_orb_opened"); }} aria-expanded={open} aria-label={t.more} className="absolute left-full ml-2 grid h-12 w-12 place-items-center rounded-full border border-line-strong bg-bg-raised text-ink shadow-lg hover:border-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"><DotsIcon/></button>
     </div>
   </div>;
 }
