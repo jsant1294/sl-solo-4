@@ -16,7 +16,7 @@ import {
   opUploadAvatar, opRemoveAvatar, opClaimUsername, opSetStatus, opUpdateProfile,
   opUpdateCategory, opUpdateContactChannels, opUpdateShareSettings, opUpdateFavoriteLinks,
   opUpdatePaymentMethods, opUploadShareImage, opRemoveShareImage, opUpdatePresentation,
-  opUpdateFloatingCta, opUpdateLayout, opUpdatePalette, type OpResult,
+  opUpdateFloatingCta, opUpdateLayout, opUpdatePalette, opUpdateAvatarShape, type OpResult,
 } from "../actions";
 
 const FLOATING_CTA_POSITIONS: FloatingCtaConfig["position"][] = ["bottom-right", "bottom-center", "bottom-left"];
@@ -97,6 +97,7 @@ export function OperatorControlPlane({ detail: d, devices, events, presentation,
   const shareDescription = typeof expExperience.shareDescription === "string" ? expExperience.shareDescription : "";
   const shareImageUrl = typeof expExperience.shareImageUrl === "string" ? expExperience.shareImageUrl : "";
   const favoriteIds = Array.isArray(expExperience.favoriteLinkIds) ? (expExperience.favoriteLinkIds as string[]) : [];
+  const avatarShape = expExperience.avatarShape === "square" ? "square" : "round";
   const category = d.type === "business" && typeof exp.category === "string" ? exp.category : "";
   const primaryAction = typeof expExperience.primaryContactAction === "string" ? expExperience.primaryContactAction : "share";
   const payments = Array.isArray(expExperience.paymentMethods) ? expExperience.paymentMethods as {
@@ -161,7 +162,7 @@ export function OperatorControlPlane({ detail: d, devices, events, presentation,
 
       {/* ——— Identity & appearance ——— */}
       <Box title="Profile management">
-        <AvatarPanel profileId={d.id} avatarUrl={d.avatarUrl} />
+        <AvatarPanel profileId={d.id} avatarUrl={d.avatarUrl} shape={avatarShape} />
         <FieldsForm d={d} />
         <div className="grid sm:grid-cols-2 gap-4">
           <UsernameForm d={d} />
@@ -252,12 +253,12 @@ function CopyLink({ url }: { url: string }) {
 }
 
 /* ——— Avatar ——— */
-function AvatarPanel({ profileId, avatarUrl }: { profileId: string; avatarUrl: string | null }) {
+function AvatarPanel({ profileId, avatarUrl, shape }: { profileId: string; avatarUrl: string | null; shape: "round" | "square" }) {
   const { busy, msg, run } = useAction();
   const fileRef = useRef<HTMLInputElement>(null);
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <div className="grid h-20 w-20 place-items-center rounded-full border border-line-strong bg-bg-sunken font-display text-2xl text-gold overflow-hidden">
+      <div className={`grid h-20 w-20 place-items-center border border-line-strong bg-bg-sunken font-display text-2xl text-gold overflow-hidden ${shape === "round" ? "rounded-full" : "rounded-lg"}`}>
         {avatarUrl
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
@@ -275,6 +276,15 @@ function AvatarPanel({ profileId, avatarUrl }: { profileId: string; avatarUrl: s
           <button disabled={busy} onClick={() => { void run(async () => opRemoveAvatar(profileId)); }}
             className="text-xs text-ink-faint hover:text-warn">Remove avatar</button>
         )}
+        <div className="flex items-center gap-1.5">
+          {(["round", "square"] as const).map((s) => (
+            <button key={s} type="button" disabled={busy || shape === s}
+              onClick={() => { void run(async () => opUpdateAvatarShape(profileId, s)); }}
+              className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${shape === s ? "border-gold text-gold" : "border-line text-ink-soft hover:border-gold/50 hover:text-ink"}`}>
+              {s}
+            </button>
+          ))}
+        </div>
         <Feedback msg={msg} />
       </div>
     </div>

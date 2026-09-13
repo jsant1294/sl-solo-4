@@ -4,7 +4,7 @@ import { asKidsData, getProfileExperience } from "@/lib/profile-data";
 export type ShareModel = {
   title: string; description: string; imageUrl: string; canonicalUrl: string;
   displayName: string; headline: string; avatarUrl: string | null; initials: string;
-  theme: Profile["theme"]; kidsSafe: boolean;
+  theme: Profile["theme"]; kidsSafe: boolean; avatarShape: "round" | "square";
 };
 
 export function canonicalProfileUrl(username: string, origin?: string) {
@@ -34,7 +34,7 @@ export function buildShareModel(profile: Profile, origin?: string): ShareModel {
       description: settings.shareDescription || "Tap to connect safely.",
       imageUrl: generatedOgImageUrl(canonicalUrl, null), canonicalUrl,
       displayName: kids?.firstName ? `${kids.firstName.charAt(0).toUpperCase()}'s SnapLink` : "SnapLink Protect",
-      headline: "SnapLink Protect", avatarUrl: null, initials: "SL", theme: "ivory", kidsSafe: true,
+      headline: "SnapLink Protect", avatarUrl: null, initials: "SL", theme: "ivory", kidsSafe: true, avatarShape: "round",
     };
   }
   const title = settings.shareTitle?.trim() || profile.displayName;
@@ -43,6 +43,6 @@ export function buildShareModel(profile: Profile, origin?: string): ShareModel {
   return {
     title, description, imageUrl: settings.shareImageUrl || generatedOgImageUrl(canonicalUrl, profile.avatarUrl), canonicalUrl,
     displayName: profile.displayName, headline: profile.headline || description,
-    avatarUrl: profile.avatarUrl, initials, theme: profile.theme, kidsSafe: false,
+    avatarUrl: profile.avatarUrl, initials, theme: profile.theme, kidsSafe: false, avatarShape: settings.avatarShape,
   };
 }

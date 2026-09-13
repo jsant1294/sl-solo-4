@@ -84,6 +84,7 @@ export type ProfileExperienceSettings = {
   shareImageUrl: string | null;
   favoriteLinkIds: string[];
   paymentMethods: StoredPaymentMethod[];
+  avatarShape: "round" | "square";
 };
 
 export function getProfileExperience(data: unknown, profileId = ""): ProfileExperienceSettings {
@@ -103,7 +104,8 @@ export function getProfileExperience(data: unknown, profileId = ""): ProfileExpe
     if (!["venmo", "cashapp", "paypal", "zelle", "custom"].includes(String(row.type)) || typeof row.value !== "string") return [];
     return [{ type: row.type as StoredPaymentMethod["type"], value: row.value, label: typeof row.label === "string" ? row.label : undefined, enabled: row.enabled === true, public: row.public === true, sortOrder: typeof row.sortOrder === "number" ? row.sortOrder : index }];
   }) : [];
-  return { contactChannels, primaryContactAction: text("primaryContactAction"), shareTitle: text("shareTitle"), shareDescription: text("shareDescription"), shareImageUrl: text("shareImageUrl"), favoriteLinkIds, paymentMethods };
+  const avatarShape = experience.avatarShape === "square" ? "square" : "round";
+  return { contactChannels, primaryContactAction: text("primaryContactAction"), shareTitle: text("shareTitle"), shareDescription: text("shareDescription"), shareImageUrl: text("shareImageUrl"), favoriteLinkIds, paymentMethods, avatarShape };
 }
 
 export function withProfileExperience(data: unknown, patch: Partial<Omit<ProfileExperienceSettings, "contactChannels">> & { contactChannels?: Array<{ type: string; value: string | null; enabled: boolean; public: boolean; sortOrder: number }> }) {

@@ -46,13 +46,13 @@ const payments = publicPaymentMethods(settings.paymentMethods, locale);
   const blocks: Record<string, ReactNode> = {
     identity: (
       <>
-        <div className="relative">
+        <div className="relative mx-auto w-32 sm:w-36">
           {profile.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={profile.avatarUrl} alt={profile.displayName}
-              className="h-32 w-32 rounded-full object-cover border-2 border-bg-raised shadow-md sm:h-36 sm:w-36" />
+              className={`h-32 w-32 object-cover border-2 border-bg-raised shadow-md sm:h-36 sm:w-36 ${settings.avatarShape === "square" ? "rounded-2xl" : "rounded-full"}`} />
           ) : (
-            <div className="inline-grid h-32 w-32 place-items-center rounded-full border border-line-strong bg-bg-raised font-display text-3xl text-gold shadow-md sm:h-36 sm:w-36 sm:text-4xl">
+            <div className={`grid h-32 w-32 place-items-center border border-line-strong bg-bg-raised font-display text-3xl text-gold shadow-md sm:h-36 sm:w-36 sm:text-4xl ${settings.avatarShape === "square" ? "rounded-2xl" : "rounded-full"}`}>
               {initials}
             </div>
           )}

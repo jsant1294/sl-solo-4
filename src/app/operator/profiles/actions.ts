@@ -261,6 +261,15 @@ export async function opUpdatePaymentMethods(profileId: string, input: unknown):
   } catch (e) { return { ok: false, error: (e as Error).message }; }
 }
 
+export async function opUpdateAvatarShape(profileId: string, shape: string): Promise<OpResult> {
+  try {
+    const profile = await adminProfile(profileId);
+    const avatarShape = z.enum(["round", "square"]).parse(shape);
+    await repo.profiles.update(profileId, { data: withProfileExperience(profile.data, { avatarShape }) as never });
+    return { ok: true };
+  } catch (e) { return { ok: false, error: (e as Error).message }; }
+}
+
 export async function opCreateLink(profileId: string, input: { type: string; label: string; url: string }) {
   try {
     const p = await adminProfile(profileId);
