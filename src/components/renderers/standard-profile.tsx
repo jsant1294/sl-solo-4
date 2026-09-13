@@ -50,9 +50,9 @@ const payments = publicPaymentMethods(settings.paymentMethods, locale);
           {profile.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={profile.avatarUrl} alt={profile.displayName}
-              className="h-20 w-20 rounded-full object-cover border-2 border-bg-raised shadow-md sm:h-24 sm:w-24" />
+              className="h-24 w-24 rounded-full object-cover border-2 border-bg-raised shadow-md sm:h-28 sm:w-28" />
           ) : (
-            <div className="grid h-20 w-20 place-items-center rounded-full border border-line-strong bg-bg-raised font-display text-2xl text-gold shadow-md sm:h-24 sm:w-24 sm:text-3xl">
+            <div className="grid h-24 w-24 place-items-center rounded-full border border-line-strong bg-bg-raised font-display text-3xl text-gold shadow-md sm:h-28 sm:w-28 sm:text-4xl">
               {initials}
             </div>
           )}
