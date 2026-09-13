@@ -6,11 +6,22 @@ import Link from "next/link";
 import { CONTACT_TYPES } from "@/lib/contact-channels";
 import { PAYMENT_TYPES } from "@/lib/payment-methods";
 import {
+  FLOATING_CTA_ACTION_TYPES, PROFILE_LAYOUTS, getFloatingCta, getProfileLayout,
+  type FloatingCtaActionType, type FloatingCtaConfig, type FloatingCtaMenuItem,
+  type ProfileLayoutKey,
+} from "@/lib/profile-data";
+import { PALETTE_LIST, resolvePalette } from "@/lib/profile-palettes";
+import {
   opCreateLink, opDeleteLink, opReorderLinks, opUpdateLink,
   opUploadAvatar, opRemoveAvatar, opClaimUsername, opSetStatus, opUpdateProfile,
   opUpdateCategory, opUpdateContactChannels, opUpdateShareSettings, opUpdateFavoriteLinks,
   opUpdatePaymentMethods, opUploadShareImage, opRemoveShareImage, opUpdatePresentation,
+  opUpdateFloatingCta, opUpdateLayout, opUpdatePalette, type OpResult,
 } from "../actions";
+
+const FLOATING_CTA_POSITIONS: FloatingCtaConfig["position"][] = ["bottom-right", "bottom-center", "bottom-left"];
+const FLOATING_CTA_STYLES: FloatingCtaConfig["style"][] = ["solid", "glass", "outline"];
+const MAX_FLOATING_CTA_MENU = 5;
 
 const inputCls = "w-full rounded-md border border-line bg-bg-raised px-3 py-2 text-sm";
 const labelCls = "grid gap-1.5 text-xs font-medium text-ink-soft";
@@ -607,14 +618,14 @@ function FloatingCtaPanel({ d }: { d: P }) {
   const [config, setConfig] = useState(() => getFloatingCta((d.data ?? {}) as never));
   const patch = (part: Partial<FloatingCtaConfig>) => setConfig((prev) => ({ ...prev, ...part }));
   const setInfo = (index: number, part: Partial<FloatingCtaMenuItem>) =>
-    setConfig((prev) => ({ ...prev, items: prev.items.map((item, i) => i === index ? { ...item, ...part } : item) }));
+    setConfig((prev) => ({ ...prev, menu: prev.menu.map((item, i) => i === index ? { ...item, ...part } : item) }));
   return (
     <Box title="Floating action orb" action={<span className="text-xs text-ink-faint">{d.type === "kids" ? "accent orb only — no inbound call/pay actions" : "guest-safe floating CTA menu"}</span>}>
       <div className="flex flex-wrap items-center gap-6">
         <label className="flex items-center gap-2 text-sm font-medium text-ink-soft"><input type="checkbox" checked={config.enabled} onChange={(e) => patch({ enabled: e.target.checked })} className="accent-gold" />Enabled</label>
         {d.type !== "kids" && (
           <label className="flex items-center gap-2 text-sm font-medium text-ink-soft">
-            <select value={config.behavior} onChange={(e) => patch({ behavior: e.target.value as FloatingCtaBehavior })} className="rounded-md border border-line bg-bg px-2 py-1 text-xs">
+            <select value={config.behavior} onChange={(e) => patch({ behavior: e.target.value as FloatingCtaConfig["behavior"] })} className="rounded-md border border-line bg-bg px-2 py-1 text-xs">
               <option value="menu">Menu (expandable)</option>
               <option value="single">Single action</option>
             </select>
@@ -622,23 +633,23 @@ function FloatingCtaPanel({ d }: { d: P }) {
         )}
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className={labelCls}>Position<select className={inputCls} value={config.position} onChange={(e) => patch({ position: e.target.value as FloatingCtaPosition })}>{FLOATING_CTA_POSITIONS.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
-        <label className={labelCls}>Style<select className={inputCls} value={config.style} onChange={(e) => patch({ style: e.target.value as FloatingCtaStyle })}>{FLOATING_CTA_STYLES.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
+        <label className={labelCls}>Position<select className={inputCls} value={config.position} onChange={(e) => patch({ position: e.target.value as FloatingCtaConfig["position"] })}>{FLOATING_CTA_POSITIONS.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
+        <label className={labelCls}>Style<select className={inputCls} value={config.style} onChange={(e) => patch({ style: e.target.value as FloatingCtaConfig["style"] })}>{FLOATING_CTA_STYLES.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
         <label className={labelCls}>Accent override<button type="button" onClick={() => patch({ accent: undefined })} className="mt-1 text-xs text-ink-faint hover:text-gold">clear</button><input className={inputCls} value={config.accent ?? ""} onChange={(e) => patch({ accent: /^#[0-9A-Fa-f]{6}$/.test(e.target.value) ? e.target.value : undefined })} placeholder="#E8B34B" /></label>
       </div>
       <div className="grid gap-2">
-        {config.items.map((item, index) => (
+        {config.menu.map((item, index) => (
           <div key={index} className="grid gap-2 rounded-lg border border-line bg-bg p-3 sm:grid-cols-[130px_1fr_1fr_auto] sm:items-center">
-            <select className={inputCls} value={item.type} onChange={(e) => setInfo(index, { type: e.target.value as FloatingCtaItemType })}>{FLOATING_CTA_ACTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+            <select className={inputCls} value={item.type} onChange={(e) => setInfo(index, { type: e.target.value as FloatingCtaActionType })}>{FLOATING_CTA_ACTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
             <input className={inputCls} value={item.label ?? ""} onChange={(e) => setInfo(index, { label: e.target.value || undefined })} placeholder="Label" />
             <input className={inputCls} value={item.value ?? ""} onChange={(e) => setInfo(index, { value: e.target.value || undefined })} placeholder="value / href / p" />
-            <button onClick={() => setConfig((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }))} className="text-xs text-ink-faint hover:text-warn">Remove</button>
+            <button onClick={() => setConfig((prev) => ({ ...prev, menu: prev.menu.filter((_, i) => i !== index) }))} className="text-xs text-ink-faint hover:text-warn">Remove</button>
           </div>
         ))}
-        {config.items.length === 0 && <p className="text-xs text-ink-faint">Empty menu — the orb opens the contact sheet instead.</p>}
+        {config.menu.length === 0 && <p className="text-xs text-ink-faint">Empty menu — the orb opens the contact sheet instead.</p>}
       </div>
       <div className="flex flex-wrap items-center gap-3 pt-1">
-        <button disabled={config.items.length >= MAX_FLOATING_CTA_MENU} onClick={() => setConfig((prev) => ({ ...prev, items: [...prev.items, { type: "call", label: "", value: "", enabled: true }] }))} className="rounded-full border border-line px-4 py-1.5 text-xs font-medium hover:border-gold disabled:opacity-30 transition-colors">+ Add menu item</button>
+        <button disabled={config.menu.length >= MAX_FLOATING_CTA_MENU} onClick={() => setConfig((prev) => ({ ...prev, menu: [...prev.menu, { type: "call", label: "", value: "", visible: true }] }))} className="rounded-full border border-line px-4 py-1.5 text-xs font-medium hover:border-gold disabled:opacity-30 transition-colors">+ Add menu item</button>
         <button disabled={busy} onClick={() => void run(async () => opUpdateFloatingCta(d.id, config))} className="rounded-full bg-ink text-bg px-5 py-2 text-sm font-medium hover:bg-gold disabled:opacity-50 transition-colors">Save orb</button>
       </div>
       <Feedback msg={msg} />
@@ -650,7 +661,7 @@ function FloatingCtaPanel({ d }: { d: P }) {
 function AppearancePanel({ d }: { d: P }) {
   const { busy, msg, run } = useAction();
   const layout = getProfileLayout((d.data ?? {}) as never);
-  const palette = getProfilePaletteRef((d.data ?? {}) as never);
+  const palette = resolvePalette((d.data ?? {}) as never, d.theme);
   const [layoutKey, setLayoutKey] = useState<ProfileLayoutKey>(layout);
   const [paletteKey, setPaletteKey] = useState<string>(palette.key);
   const [custom, setCustom] = useState<Record<string, string>>({});
@@ -672,10 +683,10 @@ function AppearancePanel({ d }: { d: P }) {
         <div>
           <p className="text-xs font-medium text-ink-soft mb-2">Palette</p>
           <div className="grid gap-2 sm:grid-cols-3">
-            {PROFILE_PALETTES.slice(0, 18).map((pal) => (
+            {PALETTE_LIST.slice(0, 18).map((pal) => (
               <button key={pal.key} onClick={() => applyIndividual(() => opUpdatePalette(d.id, pal.key))} className={`text-left rounded-xl border p-3 transition-colors ${paletteKey === pal.key ? "border-gold bg-bg-raised" : "border-line hover:border-gold/50"}`}>
                 <p className="text-sm font-medium">{pal.name}</p>
-                <div className="mt-2 flex overflow-hidden rounded-md border border-line">{pal.modes.map((m) => <span key={m.accent} className="h-3 flex-1" style={{ background: m.accent }} />)}</div>
+                <div className="mt-2 flex overflow-hidden rounded-md border border-line">{pal.swatches.map((swatch) => <span key={swatch} className="h-3 flex-1" style={{ background: swatch }} />)}</div>
               </button>
             ))}
           </div>

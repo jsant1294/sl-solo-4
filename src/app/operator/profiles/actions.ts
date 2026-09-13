@@ -83,12 +83,14 @@ import { storage } from "@/lib/providers";
 import { linkTypeEnum, type Profile, type ProfileLink } from "@/db/schema";
 import {
   validateProfileData, withProfileExperience, withProfilePresentation,
-  type ProfileSectionId, type ProfileSectionConfig,
+  PROFILE_LAYOUTS, floatingCtaSchema, withFloatingCta, withProfileLayout,
+  type ProfileSectionId, type ProfileSectionConfig, type ProfileLayoutKey,
 } from "@/lib/profile-data";
+import { PALETTES } from "@/lib/profile-palettes";
 import { contactChannelInputSchema } from "@/lib/contact-channels";
 import { normalizePaymentMethod, paymentMethodSchema } from "@/lib/payment-methods";
 
-type OpResult = { ok: true } | { ok: false; error: string };
+export type OpResult = { ok: true } | { ok: false; error: string };
 const LINK_TYPES = linkTypeEnum.enumValues as readonly string[];
 
 async function adminProfile(profileId: string) {
@@ -313,9 +315,8 @@ export async function opUpdatePresentation(profileId: string, sections: ProfileS
 export async function opUpdateLayout(profileId: string, layout: unknown): Promise<OpResult> {
   try {
     const p = await adminProfile(profileId);
-    const parsed = profileLayoutSchema.safeParse(layout);
-    if (!parsed.success) return { ok: false, error: "Unknown layout." };
-    await repo.profiles.update(profileId, { data: withProfileLayout(p.data, parsed.data) as never });
+    if (typeof layout !== "string" || !PROFILE_LAYOUTS.some(({ key }) => key === layout)) return { ok: false, error: "Unknown layout." };
+    await repo.profiles.update(profileId, { data: withProfileLayout(p.data, layout as ProfileLayoutKey) as never });
     return { ok: true };
   } catch (e) { return { ok: false, error: (e as Error).message }; }
 }
@@ -323,9 +324,9 @@ export async function opUpdateLayout(profileId: string, layout: unknown): Promis
 export async function opUpdatePalette(profileId: string, paletteKey: unknown): Promise<OpResult> {
   try {
     const p = await adminProfile(profileId);
-    const parsed = paletteKeySchema.safeParse(paletteKey);
-    if (!parsed.success) return { ok: false, error: "Unknown palette." };
-    await repo.profiles.update(profileId, { data: withPaletteInfo(p.data, parsed.data) as never });
+    if (typeof paletteKey !== "string" || !PALETTES[paletteKey]) return { ok: false, error: "Unknown palette." };
+    const data = p.data && typeof p.data === "object" ? p.data as Record<string, unknown> : {};
+    await repo.profiles.update(profileId, { data: { ...data, palette: paletteKey } as never });
     return { ok: true };
   } catch (e) { return { ok: false, error: (e as Error).message }; }
 }
@@ -333,10 +334,10 @@ export async function opUpdatePalette(profileId: string, paletteKey: unknown): P
 export async function opUpdateFloatingCta(profileId: string, cta: unknown): Promise<OpResult> {
   try {
     const p = await adminProfile(profileId);
-    const parsed = z.object({ enabled: z.boolean(), behavior: floatingCtaBehaviorSchema, label: z.string().max(24).optional(), primary: floatingCtaMenuSchema.optional(), position: floatingCtaPositionSchema, style: floatingCtaStyleSchema, menuItems: z.array(floatingCtaMenuSchema).max(5).default([]) }).parse(cta);
+    const parsed = floatingCtaSchema.parse(cta);
     const kids = p.type === "kids";
-    if (kids && (parsed.behavior === "single" || parsed.menuItems.length > 0)) return { ok: false, error: "Protect profiles use guardian-safe orb accents only — no inbound call/pay actions." };
-    await repo.profiles.update(profileId, { data: withFloatingCta(p.data, { enabled: parsed.enabled, behavior: parsed.behavior, label: parsed.label, primary: parsed.primary, position: parsed.position, style: parsed.style, menu: parsed.menuItems }) as never });
+    if (kids && (parsed.behavior === "single" || parsed.menu.length > 0)) return { ok: false, error: "Protect profiles use guardian-safe orb accents only — no inbound call/pay actions." };
+    await repo.profiles.update(profileId, { data: withFloatingCta(p.data, parsed) as never });
     return { ok: true };
   } catch (e) { return { ok: false, error: (e as Error).message }; }
 }
