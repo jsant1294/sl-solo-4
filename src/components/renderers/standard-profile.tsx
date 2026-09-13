@@ -50,9 +50,9 @@ const payments = publicPaymentMethods(settings.paymentMethods, locale);
           {profile.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={profile.avatarUrl} alt={profile.displayName}
-              className="h-24 w-24 rounded-full object-cover border-2 border-bg-raised shadow-md sm:h-28 sm:w-28" />
+              className="h-32 w-32 rounded-full object-cover border-2 border-bg-raised shadow-md sm:h-36 sm:w-36" />
           ) : (
-            <div className="grid h-24 w-24 place-items-center rounded-full border border-line-strong bg-bg-raised font-display text-3xl text-gold shadow-md sm:h-28 sm:w-28 sm:text-4xl">
+            <div className="inline-grid h-32 w-32 place-items-center rounded-full border border-line-strong bg-bg-raised font-display text-3xl text-gold shadow-md sm:h-36 sm:w-36 sm:text-4xl">
               {initials}
             </div>
           )}
@@ -91,7 +91,7 @@ const payments = publicPaymentMethods(settings.paymentMethods, locale);
 
   return (
     <main className={`min-h-screen ${themeClass[profile.theme]} bg-bg text-ink`} style={palette.style}>
-      <div className="mx-auto max-w-[520px] overflow-x-clip px-4 pb-28 sm:px-5 sm:pb-20">
+      <div className="mx-auto max-w-[520px] overflow-x-clip px-4 pb-28 text-center sm:px-5 sm:pb-20">
         <div className="h-28 -mx-4 mb-[-2.5rem] sm:h-40 sm:-mx-5 sm:mb-[-3rem]"
           style={{ background: "var(--hero)" }} />
 
