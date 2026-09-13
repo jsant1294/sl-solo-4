@@ -490,6 +490,17 @@ export const repo = {
       const { contactChannels } = getProfileExperience(p.data, p.id);
       return { ...p, links, contactChannels };
     },
+    /** Operator control-plane detail fetch — not ownership-scoped; admin only. */
+    async adminById(id: string) {
+      const d = requireDb();
+      const [p] = await d.select().from(profiles).where(eq(profiles.id, id)).limit(1);
+      if (!p) return undefined;
+      const [owner] = await d.select({ id: users.id, email: users.email, name: users.name, plan: users.plan })
+        .from(users).where(eq(users.id, p.userId)).limit(1);
+      const links = await d.select().from(profileLinks).where(eq(profileLinks.profileId, id)).orderBy(asc(profileLinks.sortOrder));
+      const { contactChannels } = getProfileExperience(p.data, p.id);
+      return { ...p, owner, links, contactChannels };
+    },
     async listByUser(userId: string) {
       const d = requireDb();
       return d.select().from(profiles).where(eq(profiles.userId, userId)).orderBy(desc(profiles.createdAt));
@@ -647,6 +658,18 @@ export const repo = {
     async record(profileId: string, type: "tap" | "qr_scan" | "profile_view" | "contact" | "guardian_call_click", source?: string) {
       const d = requireDb();
       await d.insert(activityEvents).values({ profileId, type, source: source ?? null });
+    },
+    async counts(profileId: string) {
+      const d = requireDb();
+      const rows = await d.select({ type: activityEvents.type, count: sql<number>`count(*)` })
+        .from(activityEvents).where(eq(activityEvents.profileId, profileId)).groupBy(activityEvents.type);
+      const byType: Record<string, number> = {};
+      let total = 0;
+      for (const r of rows) {
+        byType[r.type] = Number(r.count);
+        total += Number(r.count);
+      }
+      return { byType, total };
     },
   },
 

@@ -39,6 +39,7 @@ export default async function OperatorProfiles({ searchParams }: { searchParams:
               <th className="text-left font-medium px-4 py-3">Type</th>
               <th className="text-left font-medium px-4 py-3">Status</th>
               <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Created</th>
+              <th className="text-right font-medium px-4 py-3">Manage</th>
             </tr>
           </thead>
           <tbody>
@@ -52,10 +53,13 @@ export default async function OperatorProfiles({ searchParams }: { searchParams:
                 <td className="px-4 py-3 text-ink-soft capitalize">{profile.type}</td>
                 <td className="px-4 py-3"><span className={profile.status === "active" ? "text-ok" : "text-ink-faint"}>{profile.status}</span></td>
                 <td className="px-4 py-3 hidden sm:table-cell text-ink-faint font-mono text-xs">{profile.createdAt.toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-right">
+                  <Link href={`/operator/profiles/${profile.id}`} className="rounded-full border border-line px-4 py-1.5 text-xs font-medium no-underline hover:border-gold transition-colors">Manage</Link>
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-8 py-10 text-center text-ink-faint">No profiles yet.</td></tr>
+              <tr><td colSpan={7} className="px-8 py-10 text-center text-ink-faint">No profiles yet.</td></tr>
             )}
           </tbody>
         </table>

@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth-config";
 import { db } from "@/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 function isProductionEnv() {
@@ -17,28 +19,52 @@ function assertDevBypassAllowed() {
   }
 }
 
+/**
+ * Operator authorization — DB-authoritative.
+ * The session token carries the role claim, but the users table is the
+ * source of truth: this resolves a session to an operator user id AFTER
+ * re-checking role against the database, so stale/incorrect JWT claims
+ * can never grant or deny operator access incorrectly.
+ */
+export async function getOperatorUserId(): Promise<string | null> {
+  const session = await auth();
+  const uid = session?.user?.id;
+  if (!uid) return null;
+  if (db) {
+    try {
+      const [row] = await db
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, uid))
+        .limit(1);
+      return row?.role === "operator" ? uid : null;
+    } catch {
+      return null;
+    }
+  }
+  return (session?.user as { role?: string } | undefined)?.role === "operator" ? uid : null;
+}
+
 export async function hasOperatorSession(): Promise<boolean> {
   if (!db) return false;
-  const session = await auth();
-  return Boolean(session?.user?.id && (session.user as { role?: string }).role === "operator");
+  return Boolean(await getOperatorUserId());
 }
 
 /**
  * OPERATOR SEAM — separate privileged role from customer ownership.
- * Real: checks session.user.role === "operator". Demo fallback (no DB):
- * allowed only outside production, so the operator surface is reachable
- * while wiring; throws in production instead of granting access.
+ * Real: session must resolve to a users row whose role is "operator".
+ * Demo fallback (no DB): allowed only outside production, so the operator
+ * surface is reachable while wiring; throws in production instead of
+ * granting access.
  */
 export async function requireOperator(): Promise<string> {
   if (!db) {
     assertDevBypassAllowed();
     return "demo-operator";
   }
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  const userId = session?.user?.id;
-  if (role !== "operator" || !userId) redirect("/sign-in?next=/operator");
-  return userId;
+  const uid = await getOperatorUserId();
+  if (!uid) redirect("/sign-in?next=/operator");
+  return uid;
 }
 
 export type OperatorPageAuth =
@@ -61,7 +87,12 @@ export async function getOperatorPageAuth(): Promise<OperatorPageAuth> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId || !session) return { status: "unauthenticated" };
-  const role = (session.user as { role?: string }).role;
-  if (role !== "operator") return { status: "denied" };
+  const [row] = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .catch(() => []);
+  if (row?.role !== "operator") return { status: "denied" };
   return { status: "authorized", userId };
 }

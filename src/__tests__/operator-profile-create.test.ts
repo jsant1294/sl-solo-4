@@ -97,7 +97,7 @@ describe("operator profile creation — duplicate handling", () => {
       profile: { id: "profile_1" }, owner: { id: "owner_1", email: validFields.ownerEmail },
     } as never);
     const target = await redirectTarget(form(validFields));
-    expect(target).toBe("/operator/profiles?created=profile_1");
+    expect(target).toBe("/operator/profiles/profile_1");
   });
 });
 
