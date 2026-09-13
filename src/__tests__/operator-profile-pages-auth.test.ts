@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Guards the new operator/profiles pages against the same class of RSC
+ * Guards operator pages against the same class of RSC
  * streaming leak found (and fixed) on other operator pages: a parent
  * layout's redirect() does not reliably stop a child page's own Server
  * Component from executing and being streamed into the response, so each
@@ -12,15 +12,30 @@ import { join } from "node:path";
  */
 
 const PAGES = [
+  "src/app/operator/page.tsx",
+  "src/app/operator/collections/page.tsx",
+  "src/app/operator/devices/page.tsx",
+  "src/app/operator/devices/[id]/page.tsx",
+  "src/app/operator/launch/page.tsx",
+  "src/app/operator/leads/page.tsx",
+  "src/app/operator/media/page.tsx",
+  "src/app/operator/orders/page.tsx",
+  "src/app/operator/orders/[id]/page.tsx",
+  "src/app/operator/plans/page.tsx",
+  "src/app/operator/products/page.tsx",
+  "src/app/operator/products/[id]/page.tsx",
   "src/app/operator/profiles/page.tsx",
+  "src/app/operator/profiles/[id]/page.tsx",
   "src/app/operator/profiles/new/page.tsx",
+  "src/app/operator/purposes/page.tsx",
+  "src/app/operator/storefront/page.tsx",
 ];
 
 function bodyOnly(source: string): string {
   return source.split("\n").filter((line) => !line.trim().startsWith("import ")).join("\n");
 }
 
-describe("operator/profiles pages auth boundary", () => {
+describe("operator pages auth boundary", () => {
   for (const relative of PAGES) {
     it(`${relative} calls requireOperator() before any repo/data access (if any)`, () => {
       const body = bodyOnly(readFileSync(join(process.cwd(), relative), "utf8"));

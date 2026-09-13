@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { repo } from "@/db/repo";
 import { saveStorefrontSection } from "./actions";
+import { requireOperator } from "@/lib/operator";
 
 export const dynamic = "force-dynamic";
 const input = "w-full rounded-md border border-line bg-bg-raised px-3 py-2 text-sm";
 const label = "grid gap-1.5 text-xs font-medium text-ink-soft";
 
 export default async function StorefrontEditor({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+  await requireOperator();
   const [sections, media, products] = await Promise.all([repo.storefront.list(), repo.media.list(), repo.products.list(false)]);
   const saved = (await searchParams).saved;
   return <div className="pb-20">

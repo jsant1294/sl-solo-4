@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { dollars } from "@/db/commerce-demo";
 import { data } from "@/lib/data";
+import { requireOperator } from "@/lib/operator";
 export const dynamic = "force-dynamic";
 
 export default async function OperatorDashboard() {
+  await requireOperator();
   const orders = await data.orders();
   const paid = orders.filter((o) => o.paymentState === "paid");
   const needsProduction = paid.filter((o) => o.fulfillmentState === "unfulfilled");

@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 import { repo } from "@/db/repo";
 import { saveProduct, uploadProductMedia, removeProductMedia, arrangeProductMedia } from "../actions";
 import { dollars } from "@/db/commerce-demo";
+import { requireOperator } from "@/lib/operator";
 
 const input = "w-full rounded-md border border-line bg-bg-raised px-3 py-2 text-sm";
 const label = "grid gap-1.5 text-xs font-medium text-ink-soft";
 
 export default async function ProductEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string }> }) {
+  await requireOperator();
   const { id } = await params; const product = await repo.products.byId(id); if (!product) notFound();
   const saved = (await searchParams).saved;
   const variants = product.variants.map((v) => [v.label, v.color, v.priceDelta, v.sku].map((x) => x ?? "").join(" | ")).join("\n");

@@ -6,9 +6,11 @@ import { FulfillmentActions } from "./fulfillment-ui";
 import { db } from "@/db";
 import { repo } from "@/db/repo";
 import { repairShippingAddress } from "../../fulfillment-actions";
+import { requireOperator } from "@/lib/operator";
 export const dynamic = "force-dynamic";
 
 export default async function OrderDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ repairError?: string; repaired?: string }> }) {
+  await requireOperator();
   const { id } = await params;
   const query = await searchParams;
   const o = await data.orderById(id);

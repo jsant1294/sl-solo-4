@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { dollars } from "@/db/commerce-demo";
 import { data } from "@/lib/data";
+import { requireOperator } from "@/lib/operator";
 export const dynamic = "force-dynamic";
 
 export default async function OperatorProducts() {
+  await requireOperator();
   const products = await data.products(false);
   return (
     <div>

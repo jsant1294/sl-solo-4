@@ -1,9 +1,11 @@
 import { db } from "@/db";
 import { repo } from "@/db/repo";
 import { listDemoLeads } from "@/db/demo";
+import { requireOperator } from "@/lib/operator";
 export const dynamic = "force-dynamic";
 
 export default async function OperatorLeads() {
+  await requireOperator();
   const leads = db ? await repo.leads.list() : listDemoLeads();
   return (
     <div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { dollars } from "@/db/commerce-demo";
 import { data } from "@/lib/data";
+import { requireOperator } from "@/lib/operator";
 export const dynamic = "force-dynamic";
 
 const fulfillLabel: Record<string, string> = {
@@ -9,6 +10,7 @@ const fulfillLabel: Record<string, string> = {
 };
 
 export default async function OperatorOrders() {
+  await requireOperator();
   const orders = (await data.orders()).sort((a, b) => {
     const aNeedsWork = a.paymentState === "paid" && a.fulfillmentState === "unfulfilled" ? 1 : 0;
     const bNeedsWork = b.paymentState === "paid" && b.fulfillmentState === "unfulfilled" ? 1 : 0;

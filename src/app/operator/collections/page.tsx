@@ -1,5 +1,6 @@
 import { repo } from "@/db/repo";
 import { saveCollectionOption } from "./actions";
+import { requireOperator } from "@/lib/operator";
 
 export const dynamic = "force-dynamic";
 const input = "w-full rounded-md border border-line bg-bg-raised px-3 py-2 text-sm";
@@ -7,6 +8,7 @@ const label = "grid gap-1.5 text-xs font-medium text-ink-soft";
 const patterns = ["pattern-signature", "pattern-color", "pattern-play", "pattern-kids"] as const;
 
 export default async function CollectionsEditor({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+  await requireOperator();
   const collections = await repo.collections.list().catch(() => null);
   const saved = (await searchParams).saved;
 

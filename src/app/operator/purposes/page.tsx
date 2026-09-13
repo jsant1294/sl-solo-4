@@ -1,5 +1,6 @@
 import { repo } from "@/db/repo";
 import { savePurposeOption } from "./actions";
+import { requireOperator } from "@/lib/operator";
 
 export const dynamic = "force-dynamic";
 const input = "w-full rounded-md border border-line bg-bg-raised px-3 py-2 text-sm";
@@ -8,6 +9,7 @@ const label = "grid gap-1.5 text-xs font-medium text-ink-soft";
 const colors = ["coral", "violet", "blue", "aqua", "green", "yellow"] as const;
 
 export default async function PurposesEditor({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+  await requireOperator();
   const purposes = await repo.purposes.list().catch(() => null);
   const saved = (await searchParams).saved;
 

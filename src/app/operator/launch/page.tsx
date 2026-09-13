@@ -1,10 +1,12 @@
 import { db } from "@/db";
 import { repo } from "@/db/repo";
 import { launchConfiguration } from "@/lib/launch-config";
+import { requireOperator } from "@/lib/operator";
 
 export const dynamic = "force-dynamic";
 
 export default async function LaunchReadiness() {
+  await requireOperator();
   const checks = launchConfiguration();
   const notifications = db ? await repo.notifications.counts() : { pending: 0, failed: 0 };
   const orders = db ? await repo.orders.launchCounts() : { pendingPayments: 0, paidWithIssues: 0, paidUnfulfilled: 0 };

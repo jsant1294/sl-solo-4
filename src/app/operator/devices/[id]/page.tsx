@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 import { repo } from "@/db/repo";
 import { updateDevice, createReplacement } from "../actions";
 import { operatorDeviceTransitions } from "@/lib/device-lifecycle";
+import { requireOperator } from "@/lib/operator";
 const input = "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm";
 export default async function DeviceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
+  await requireOperator();
   const device = await repo.devices.byId((await params).id); if (!device) notFound();
   const query = await searchParams;
   return <div className="max-w-2xl"><p className="text-xs font-mono uppercase tracking-widest text-gold">Device registry</p><h1 className="font-display text-3xl mt-2">{device.deviceCode}</h1><div className="rounded-xl border border-line bg-bg-raised p-5 mt-7 grid sm:grid-cols-2 gap-4 text-sm"><Field k="Hardware" v={device.type}/><Field k="Product ID" v={device.hardwareProductId ?? device.productId}/><Field k="Variant ID" v={device.hardwareVariantId}/><Field k="SKU" v={device.sku}/><Field k="Order item" v={device.orderItemId}/><Field k="Destination" v={device.destinationId}/><Field k="Profile" v={device.profileId}/><Field k="Customer" v={device.assignedUserId}/><Field k="Physical URL" v={`/t/${device.deviceCode}`}/><Field k="Assigned" v={device.assignedAt?.toLocaleString()}/><Field k="Activated" v={device.activatedAt?.toLocaleString()}/><Field k="Last seen" v={device.lastSeenAt?.toLocaleString()}/></div>

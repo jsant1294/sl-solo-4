@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOperatorPageAuth } from "@/lib/operator";
+import { signOut as authSignOut } from "@/lib/auth-config";
+
+async function signOutOperator() {
+  "use server";
+  await authSignOut({ redirectTo: "/sign-in?next=/operator" });
+}
 
 export default async function OperatorLayout({ children }: { children: React.ReactNode }) {
   const pageAuth = await getOperatorPageAuth();
@@ -12,7 +18,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
           <p className="font-mono text-[0.65rem] uppercase tracking-widest text-gold mb-2">SnapLink Operator</p>
           <h1 className="font-display text-2xl font-semibold text-ink">Operator access required</h1>
           <p className="mt-3 text-sm text-ink-soft">You&apos;re signed in, but this account does not have operator access.</p>
-          <Link href="/" className="mt-6 inline-block rounded-full bg-ink text-bg px-6 py-3 text-sm font-medium no-underline hover:bg-gold transition-colors">Return to SnapLink</Link>
+          <form action={signOutOperator}><button className="mt-6 rounded-full bg-ink text-bg px-6 py-3 text-sm font-medium hover:bg-gold transition-colors">Sign out</button></form>
         </div>
       </div>
     );
@@ -43,7 +49,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
               ))}
             </nav>
           </div>
-          <Link href="/" className="text-xs text-ink-faint hover:text-ink no-underline">Exit</Link>
+          <form action={signOutOperator}><button className="text-xs text-ink-faint hover:text-ink">Sign out</button></form>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-5 py-8">{children}</main>

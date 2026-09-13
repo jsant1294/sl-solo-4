@@ -2,8 +2,10 @@ import Link from "next/link";
 import { db } from "@/db";
 import { repo } from "@/db/repo";
 import { registerDevice } from "./actions";
+import { requireOperator } from "@/lib/operator";
 export const dynamic = "force-dynamic";
 export default async function DevicesPage({ searchParams }: { searchParams: Promise<{ error?: string; registered?: string }> }) {
+  await requireOperator();
   const query = await searchParams;
   const devices = db ? await repo.devices.list() : [];
   return <div><div className="flex justify-between items-end mb-6"><div><p className="text-xs font-mono uppercase tracking-widest text-gold">Registry</p><h1 className="font-display text-3xl mt-2">Devices</h1></div><span className="text-xs text-ink-faint">{devices.length} registered</span></div>

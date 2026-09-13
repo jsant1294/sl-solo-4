@@ -3,16 +3,18 @@ import { localeFrom } from "@/i18n/util";
 import { SiteHeader } from "@/components/site-chrome";
 import { Section } from "@/components/primitives";
 import { ActivationFlow } from "./activation-flow";
-import { listMyProfiles, requireUserId } from "@/lib/auth";
+import { getSessionUserId, listMyProfiles } from "@/lib/auth";
 import { db } from "@/db";
 import { repo } from "@/db/repo";
+import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 export default async function Activate({ searchParams }: { searchParams: Promise<{ lang?: string; sim?: string; product?: string }> }) {
   const sp = await searchParams;
   const locale = localeFrom(sp);
   const t = getDict(locale);
-  const uid = await requireUserId();
+  const uid = await getSessionUserId();
+  if (!uid) redirect("/sign-in?next=/activation");
   const profiles = await listMyProfiles();
   const devices = db ? await repo.devices.byAssignedUser(uid) : [];
   return (

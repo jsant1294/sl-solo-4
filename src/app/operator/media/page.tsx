@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { repo } from "@/db/repo";
 import { uploadStorefrontMedia } from "./actions";
+import { requireOperator } from "@/lib/operator";
 
 export const dynamic = "force-dynamic";
 const input = "w-full rounded-md border border-line bg-bg-raised px-3 py-2 text-sm";
 const label = "grid gap-1.5 text-xs font-medium text-ink-soft";
 
 export default async function MediaLibrary({ searchParams }: { searchParams: Promise<{ uploaded?: string }> }) {
+  await requireOperator();
   const items = await repo.media.list();
   const uploaded = (await searchParams).uploaded;
   return <div className="pb-20">
