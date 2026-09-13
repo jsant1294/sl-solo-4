@@ -77,8 +77,15 @@ describe("profile sharing", () => {
   it("uses profile defaults, canonical URL, theme and image fallback", () => {
     const model = buildShareModel(profile, "https://solo.example");
     expect(model.title).toBe(profile.displayName); expect(model.description).toBe(profile.headline);
-    expect(model.canonicalUrl).toBe("https://solo.example/u/jose"); expect(model.imageUrl).toContain("/opengraph-image");
+    expect(model.canonicalUrl).toBe("https://solo.example/u/jose"); expect(model.imageUrl).toBe("https://solo.example/u/jose/opengraph-image?v=no-avatar");
     expect(model.initials).toBe("JS"); expect(model.theme).toBe("obsidian");
+  });
+  it("changes the generated OG URL when the avatar changes so message apps refresh their cache", () => {
+    const first = buildShareModel({ ...profile, avatarUrl: "https://blob.example/avatars/jose-one.png" }, "https://solo.example");
+    const second = buildShareModel({ ...profile, avatarUrl: "https://blob.example/avatars/jose-two.png" }, "https://solo.example");
+    expect(first.imageUrl).toBe("https://solo.example/u/jose/opengraph-image?v=jose-one.png");
+    expect(second.imageUrl).toBe("https://solo.example/u/jose/opengraph-image?v=jose-two.png");
+    expect(second.imageUrl).not.toBe(first.imageUrl);
   });
   it("honors safe overrides without mixing VCF data", () => {
     const model = buildShareModel({ ...profile, data: { experience: { shareTitle: "Custom title", shareDescription: "Custom description", shareImageUrl: "https://blob.example/share.jpg" } } }, "https://solo.example");
