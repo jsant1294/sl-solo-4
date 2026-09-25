@@ -88,8 +88,8 @@ export function PurposeFinder({ products, purposes, locale = "en" }: { products:
   const recommended = active ? recommendedProducts(active, products) : [];
 
   return <>
-    <div className="grid grid-cols-2 gap-2 sm:gap-3.5">
-      {purposes.map((purpose) => <PurposeRow key={purpose.key} purpose={purpose} thumbnail={recommendedProducts(purpose, products)[0]} locale={locale} selected={activeKey === purpose.key} onSelect={() => select(purpose)}/>)}
+    <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
+      {purposes.map((purpose, index) => <PurposeCard key={purpose.key} purpose={purpose} thumbnail={recommendedProducts(purpose, products)[0]} locale={locale} selected={activeKey === purpose.key} priority={index < 4} onSelect={() => select(purpose)}/>)}
     </div>
     {active && <Sheet open={!!openKey} onClose={close} labelledBy={`purpose-${active.key}-title`} accent={active.color}>
       <PurposeModalContent purpose={active} products={recommended} locale={locale} onClose={close} L={L}/>
@@ -97,22 +97,24 @@ export function PurposeFinder({ products, purposes, locale = "en" }: { products:
   </>;
 }
 
-function PurposeRow({ purpose, thumbnail, locale, selected, onSelect }: { purpose: Purpose; thumbnail?: HomeProduct; locale: "en" | "es"; selected: boolean; onSelect: () => void }) {
+/** Image-first purpose card. Operator image (Purpose CMS) → top matched product photo → color field. */
+function PurposeCard({ purpose, thumbnail, locale, selected, priority, onSelect }: { purpose: Purpose; thumbnail?: HomeProduct; locale: "en" | "es"; selected: boolean; priority: boolean; onSelect: () => void }) {
+  const image = purpose.image ?? (thumbnail?.image ? { url: thumbnail.image.url, alt: "", objectPosition: thumbnail.image.objectPosition } : null);
+  const tint = `hsl(var(--${purpose.color}))`;
   return <button
     onClick={onSelect} aria-haspopup="dialog"
-    className={`group relative flex items-center gap-3 sm:gap-4 overflow-hidden rounded-xl sm:rounded-2xl border bg-bg-raised p-2.5 pt-3.5 sm:p-4 sm:pt-5 text-left transition-all ${selected ? "shadow-sm" : "border-line hover:-translate-y-0.5 hover:shadow-sm"}`}
-    style={selected ? { borderColor: `hsl(var(--${purpose.color}))`, background: `hsl(var(--${purpose.color}) / .1)` } : undefined}
+    className={`group relative isolate flex aspect-[4/5] flex-col justify-end overflow-hidden rounded-2xl text-left shadow-sm ring-1 transition-all hover:-translate-y-1 hover:shadow-md sm:aspect-[3/4] ${selected ? "ring-2" : "ring-line"}`}
+    style={{ background: `linear-gradient(160deg, hsl(var(--${purpose.color}) / .55), hsl(var(--${purpose.color}) / .15))`, ...(selected ? { ["--tw-ring-color" as string]: tint } : {}) }}
   >
-    <span className="absolute inset-x-0 top-0 h-1 sm:h-1.5" style={{ background: `hsl(var(--${purpose.color}))` }}/>
-    <span className="relative h-11 w-11 sm:h-14 sm:w-14 shrink-0 overflow-hidden rounded-lg sm:rounded-xl bg-bg-sunken">
-      {thumbnail?.image && <img src={thumbnail.image.url} alt="" aria-hidden loading="lazy" className="h-full w-full object-cover" style={{ objectPosition: thumbnail.image.objectPosition }}/>}
-      <span className="absolute inset-0" style={{ background: `hsl(var(--${purpose.color}) / .22)` }}/>
+    {image && <img src={image.url} alt={purpose.image ? image.alt : ""} aria-hidden={!purpose.image} loading={priority ? "eager" : "lazy"} className="absolute inset-0 -z-10 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" style={{ objectPosition: image.objectPosition }}/>}
+    {!purpose.image && image && <span className="absolute inset-0 -z-10 mix-blend-multiply" style={{ background: `hsl(var(--${purpose.color}) / .35)` }}/>}
+    <span className="absolute inset-0 -z-10 bg-gradient-to-t from-black/80 via-black/25 to-transparent"/>
+    <span className="absolute inset-x-0 top-0 h-1.5" style={{ background: tint }}/>
+    {(purpose.start || purpose.example) && <span className="absolute right-2.5 top-3.5 rounded-full bg-black/35 px-2.5 py-1 text-[0.6rem] uppercase tracking-[0.14em] text-white backdrop-blur sm:right-3.5 sm:top-4">{locale === "es" ? "Ver ejemplo" : "Example"}</span>}
+    <span className="relative p-3.5 text-white sm:p-5">
+      <span className="flex items-center justify-between gap-2"><span className="block font-display text-lg leading-tight sm:text-2xl">{locale === "es" ? purpose.titleEs : purpose.title}</span><Glyph.arrow className="h-4 w-4 shrink-0 text-white/80 transition-transform group-hover:translate-x-0.5"/></span>
+      <span className="mt-1.5 line-clamp-3 block text-xs text-white/75 sm:text-sm">{locale === "es" ? purpose.taglineEs : purpose.tagline}</span>
     </span>
-    <span className="min-w-0 flex-1">
-      <span className="block font-display text-sm sm:text-lg leading-tight">{locale === "es" ? purpose.titleEs : purpose.title}</span>
-      <span className="block text-xs sm:text-sm mt-1 text-ink-faint">{locale === "es" ? purpose.taglineEs : purpose.tagline}</span>
-    </span>
-    <Glyph.arrow className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5"/>
   </button>;
 }
 
@@ -130,6 +132,11 @@ function PurposeModalContent({ purpose, products, locale, onClose, L }: { purpos
       </button>
     </div>
     <p className="mt-4 text-sm text-ink-soft leading-relaxed">{es ? purpose.descriptionEs : purpose.description}</p>
+
+    {(purpose.start || purpose.example) && <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+      {purpose.start && <Link href={L(purpose.start.href)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-bg no-underline hover:bg-gold">{es ? purpose.start.labelEs : purpose.start.label}<Glyph.arrow className="w-4 h-4"/></Link>}
+      {purpose.example && <Link href={L(purpose.example.href)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full border border-line-strong px-6 py-3 text-sm text-ink no-underline hover:border-gold hover:text-gold">{es ? purpose.example.labelEs : purpose.example.label}</Link>}
+    </div>}
 
     <div className="mt-6 flex flex-wrap gap-2">
       {(es ? purpose.chipsEs : purpose.chips).map((chip) => <span key={chip} className="rounded-full border border-line px-3 py-1.5 text-xs text-ink-soft">{chip}</span>)}

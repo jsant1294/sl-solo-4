@@ -6,13 +6,16 @@ import { dollars } from "@/db/commerce-demo";
 import { data } from "@/lib/data";
 import { SiteHeader, SiteFooter } from "@/components/site-chrome";
 import { Button } from "@/components/ui";
-import { Section, Eyebrow, Glyph, PhoneFrame } from "@/components/primitives";
+import { Section, Eyebrow, Glyph } from "@/components/primitives";
 import { ProductMedia } from "@/components/product-media";
 import { PersonalizationMoment, PurposeFinder, StyleDiscovery, TapDemo, VideoRail, type HomeProduct } from "@/components/home-experiences";
 import { ProfileRenderer } from "@/components/renderers";
+import { SampleGallery } from "@/components/sample-gallery";
+import { SamplePreview } from "@/components/sample-preview";
+import { loadSamples, sampleBrand, sampleLabel, sampleStartHref, sampleStory } from "@/lib/samples";
 import { db } from "@/db";
 import { repo } from "@/db/repo";
-import { purposes as demoPurposes, purposesFromRows } from "@/lib/purpose";
+import { purposes as demoPurposes, purposesWithDefaults } from "@/lib/purpose";
 import { collections as demoCollections, collectionsFromRows } from "@/lib/collections";
 export const dynamic = "force-dynamic";
 
@@ -37,7 +40,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ l
     db ? repo.purposes.list().catch(() => null) : Promise.resolve(null),
     db ? repo.collections.list().catch(() => null) : Promise.resolve(null),
   ]);
-  const purposeList = purposeRows && purposeRows.length ? purposesFromRows(purposeRows) : demoPurposes;
+  const purposeList = purposeRows && purposeRows.length ? purposesWithDefaults(purposeRows) : demoPurposes;
   const collectionList = collectionRows && collectionRows.length ? collectionsFromRows(collectionRows) : demoCollections;
   const view = products.map((product): HomeProduct => {
     const rich = product as typeof product & { primaryImage?: { url: string; alt: string | null; objectPosition: string } | null; video?: { id: string; url: string } | null; videoPoster?: { url: string } | null };
@@ -70,7 +73,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ l
   const hardwareProducts = [...products]
     .sort((a, b) => Number(b.id === hardwareCms.featuredProductId) - Number(a.id === hardwareCms.featuredProductId))
     .map((product) => product.id === hardwareCms.featuredProductId && hardwareCms.media ? { ...product, cmsMedia: hardwareCms.media } : product);
-  const profileDemo = await data.profileByUsername("jose");
+  const [profileDemo, talentSamples] = await Promise.all([data.profileByUsername("jose"), loadSamples(locale)]);
+  const gallery = [
+    ...(profileDemo ? [{ key: "personal", label: "Personal", href: L(`/u/${profileDemo.username}`), startHref: L("/app"), shopHref: L("/hardware"),
+      story: locale === "es" ? "Alguien nuevo. Un toque — tu número y tus redes guardados antes de que pase el momento." : "Someone new. One tap — your number and your socials, saved before the moment passes.",
+      content: <ProfileRenderer profile={profileDemo} links={profileDemo.links} locale={profileDemo.locale}/> }] : []),
+    ...talentSamples.map((sample) => ({ key: sample.key, label: sampleLabel(sample.key, locale), brand: sampleBrand(sample.key), story: sampleStory(sample.key, locale), href: L(`/examples/${sample.key}`),
+      startHref: L(sampleStartHref(sample.key)), shopHref: L("/hardware"), content: <SamplePreview sample={sample} locale={locale} compact/> })),
+  ];
 
   return <><SiteHeader locale={locale}/><CmsThemeStyles sections={[heroCms, seeTapCms, purposeCms, collectionsCms, hardwareCms, personalizationCms, profileCms, howCms, trustCms, compareCms, businessCms, finalCms]}/>
     {heroCms.active && <Section className="relative flex min-h-[78vh] items-center overflow-hidden py-24 sm:min-h-[88vh] sm:py-28">
@@ -90,7 +100,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ l
 
     {seeTapCms.active && <Section id="explore" className="py-16 sm:py-20 bg-ink text-bg"><div className="flex items-end justify-between gap-6 mb-8"><div><Eyebrow>{seeTapCms.eyebrow}</Eyebrow><h2 className="font-display text-4xl sm:text-5xl mt-3">{seeTapCms.headline}</h2></div>{seeTapCms.body && <p className="hidden md:block max-w-xs text-sm text-white/55">{seeTapCms.body}</p>}</div><div className="flex flex-col lg:flex-row lg:items-center gap-10 lg:gap-16"><VideoRail products={seeTapProduct ? [seeTapProduct] : view} ctaLabel={seeTapCms.ctaLabel} ctaHref={seeTapCms.ctaHref} locale={locale}/><div className="grid sm:grid-cols-3 lg:grid-cols-1 gap-8 lg:gap-10 lg:flex-1 lg:py-2"><Proof n="01" title={t.home.proof.tapTitle} body={t.home.proof.tapBody}/><Proof n="02" title={t.home.proof.openTitle} body={t.home.proof.openBody}/><Proof n="03" title={t.home.proof.updateTitle} body={t.home.proof.updateBody}/></div></div></Section>}
 
-    {purposeCms.active && <Section className="py-12 sm:py-24 bg-[linear-gradient(135deg,hsl(var(--coral)/.08),hsl(var(--violet)/.06),hsl(var(--aqua)/.08))]"><Eyebrow>{purposeCms.eyebrow}</Eyebrow><h2 className="font-display text-3xl sm:text-5xl mt-3">{purposeCms.headline}</h2>{purposeCms.body && <p className="mt-3 sm:mt-4 max-w-xl text-ink-soft">{purposeCms.body}</p>}<CmsMediaAccent media={purposeCms.media}/><div className="mt-6 sm:mt-9"><PurposeFinder products={view} purposes={purposeList} locale={locale}/></div></Section>}
+    {purposeCms.active && <Section id="find-your-fit" className="py-12 sm:py-24 bg-[linear-gradient(135deg,hsl(var(--coral)/.08),hsl(var(--violet)/.06),hsl(var(--aqua)/.08))]"><Eyebrow>{purposeCms.eyebrow}</Eyebrow><h2 className="font-display text-3xl sm:text-5xl mt-3">{purposeCms.headline}</h2>{purposeCms.body && <p className="mt-3 sm:mt-4 max-w-xl text-ink-soft">{purposeCms.body}</p>}<CmsMediaAccent media={purposeCms.media}/><div className="mt-6 sm:mt-9"><PurposeFinder products={view} purposes={purposeList} locale={locale}/></div></Section>}
 
     {collectionsCms.active && <Section className="py-16 sm:py-24 overflow-hidden bg-[linear-gradient(180deg,hsl(var(--bg)),hsl(var(--bg-sunken)))]"><div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-9"><div><Eyebrow>{collectionsCms.eyebrow}</Eyebrow><h2 className="font-display text-4xl sm:text-5xl mt-3">{collectionsCms.headline}</h2></div><div className="flex flex-col items-start sm:items-end gap-3">{collectionsCms.body && <p className="max-w-md text-sm text-ink-soft">{collectionsCms.body}</p>}{collectionsCms.ctaLabel && collectionsCms.ctaHref && <Link href={H(collectionsCms.ctaHref)} className="hidden sm:inline-flex text-sm text-ink no-underline">{collectionsCms.ctaLabel} →</Link>}</div></div><CmsMediaAccent media={collectionsCms.media}/><StyleDiscovery products={view} collections={collectionList} locale={locale} featuredCollection={collectionsCms.featuredCollection}/></Section>}
 
@@ -98,7 +108,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ l
 
     {personalizationCms.active && personalizedProduct && <Section className="py-16 sm:py-24 bg-[linear-gradient(135deg,hsl(var(--yellow)/.10),hsl(var(--pink)/.07),hsl(var(--bg)))]"><PersonalizationMoment product={personalizedProduct} locale={locale} eyebrow={personalizationCms.eyebrow} headline={personalizationCms.headline} body={personalizationCms.body} ctaLabel={personalizationCms.ctaLabel} ctaHref={personalizationCms.ctaHref ? H(personalizationCms.ctaHref) : null}/></Section>}
 
-    {profileCms.active && <Section id="tap-demo" className="py-16 sm:py-20 border-y border-line"><div className="grid lg:grid-cols-[0.75fr_1.25fr] gap-10 items-center"><div><Eyebrow>{profileCms.eyebrow}</Eyebrow><h2 className="font-display text-4xl sm:text-5xl mt-3">{profileCms.headline}</h2>{profileCms.body && <p className="text-ink-soft mt-5">{profileCms.body}</p>}<CmsMediaAccent media={profileCms.media}/>{profileCms.ctaLabel && profileCms.ctaHref && <Button href={H(profileCms.ctaHref)} variant="outline" className="mt-7">{profileCms.ctaLabel} →</Button>}</div>{profileDemo ? <PhoneFrame><ProfileRenderer profile={profileDemo} links={profileDemo.links} locale={profileDemo.locale}/></PhoneFrame> : hero ? <TapDemo product={hero} locale={locale}/> : null}</div></Section>}
+    {profileCms.active && <Section id="tap-demo" className="py-16 sm:py-20 border-y border-line"><div className="grid lg:grid-cols-[0.75fr_1.25fr] gap-10 items-center"><div><Eyebrow>{profileCms.eyebrow}</Eyebrow><h2 className="font-display text-4xl sm:text-5xl mt-3">{profileCms.headline}</h2>{profileCms.body && <p className="text-ink-soft mt-5">{profileCms.body}</p>}<CmsMediaAccent media={profileCms.media}/>{profileCms.ctaLabel && profileCms.ctaHref && <Button href={H(profileCms.ctaHref)} variant="outline" className="mt-7">{profileCms.ctaLabel} →</Button>}</div>{gallery.length ? <SampleGallery samples={gallery} locale={locale}/> : hero ? <TapDemo product={hero} locale={locale}/> : null}</div></Section>}
 
     {howCms.active && <Section className="py-16 sm:py-20"><div className="mb-9"><Eyebrow>{howCms.eyebrow}</Eyebrow><h2 className="font-display text-4xl mt-3">{howCms.headline}</h2>{howCms.body && <p className="mt-4 text-ink-soft">{howCms.body}</p>}<CmsMediaAccent media={howCms.media}/></div><div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 [-ms-overflow-style:none] [scrollbar-width:none]">{t.home.processSteps.map((step, index) => <Step key={step.n} n={step.n} title={step.t} body={step.b} pattern={STEP_PATTERNS[index % STEP_PATTERNS.length]}/>)}</div></Section>}
 

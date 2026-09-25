@@ -73,3 +73,35 @@ export function canResolvePhysicalDevice(input: {
 export function fulfillmentIssueForPaidOrder(requiresShipping: boolean, shippingPersisted: boolean) {
   return requiresShipping && !shippingPersisted ? "shipping_address_missing" : null;
 }
+
+export type TouchpointOutcome =
+  | { kind: "not_found" }
+  | { kind: "needs_activation" }
+  | { kind: "wrong_account" };
+
+/**
+ * Classifies a /t/{deviceCode} tap that didn't resolve to a live destination (resolveTouchpoint
+ * returned undefined). Distinguishes a genuinely unknown/invalid code (stays 404) from a real,
+ * operator-assigned device simply awaiting the customer's own activation — so the tap promise
+ * ("tap your SnapLink to activate it") is actually true, without turning every malformed or
+ * unclaimed/disabled/lost/replaced code into a false invitation to activate.
+ *
+ * Pure/DB-free by design so this routing decision is unit-testable without a database.
+ */
+export function classifyUnresolvedTouchpoint(input: {
+  deviceExists: boolean;
+  status?: DeviceLifecycleStatus;
+  assignedUserId?: string | null;
+  viewerUserId: string | null;
+}): TouchpointOutcome {
+  if (!input.deviceExists) return { kind: "not_found" };
+  // Only a device an operator has assigned to a real customer (status "assigned") is awaiting
+  // activation. "unclaimed" has no owner yet; "paired" that failed to resolve means its
+  // destination/profile is inactive (a real problem, but not something a visitor can fix by
+  // "activating"); "disabled"/"lost"/"replaced" are terminal states — none of these should
+  // invite activation.
+  if (input.status !== "assigned") return { kind: "not_found" };
+  if (!input.viewerUserId) return { kind: "needs_activation" }; // sign-in will gate the real ownership check
+  if (input.assignedUserId !== input.viewerUserId) return { kind: "wrong_account" };
+  return { kind: "needs_activation" };
+}

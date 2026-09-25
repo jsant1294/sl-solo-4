@@ -1,3 +1,4 @@
+import { projectProfile } from "@/lib/talent/model";
 import { db } from "@/db";
 import { repo } from "@/db/repo";
 import {
@@ -21,6 +22,10 @@ export const data = {
   async storefrontSections() {
     return db ? repo.storefront.list() : [];
   },
+  /** Bundle slots (e.g. the Networking Kit) — DB-only, like device provisioning. */
+  async bundleSlots(bundleProductId: string) {
+    return db ? repo.products.bundleSlots(bundleProductId) : [];
+  },
   async kidsProducts() {
     if (!db) return demoKids();
     const all = await repo.products.list(true);
@@ -34,14 +39,16 @@ export const data = {
   },
   async profileByUsername(username: string) {
     if (previewProfileDemoEnabled() && username.toLowerCase() === PREVIEW_DEMO_USERNAME) return previewDemoProfile;
-    return db ? repo.profiles.byUsername(username) : getDemoProfile(username);
+    const profile = db ? await repo.profiles.byUsername(username) : getDemoProfile(username);
+    return profile ? projectProfile(profile) : undefined;
   },
   async resolveDestination(token: string) {
     if (previewProfileDemoEnabled() && token === PREVIEW_DEMO_TOKEN) return previewDemoProfile;
     if (db) {
       const r = await repo.destinations.resolve(token);
-      return r ? { ...r.profile, links: [] } : undefined;
+      return r ? projectProfile({ ...r.profile, links: [] }) : undefined;
     }
-    return getProfileByDestination(token);
+    const profile = getProfileByDestination(token);
+    return profile ? projectProfile(profile) : undefined;
   },
 };

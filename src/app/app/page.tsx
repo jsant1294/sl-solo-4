@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { getDict } from "@/i18n/dict";
 import { localeFrom, withLang } from "@/i18n/util";
-import { listMyProfiles } from "@/lib/auth";
-import { DEMO_DEVICES } from "@/db/demo";
+import { getSessionUserId, listMyProfiles } from "@/lib/auth";
+import { db } from "@/db";
+import { repo } from "@/db/repo";
+import { hasEntitlement, meetsEntitlementRequirement, ENTITLEMENT_SOLO_NETWORKING } from "@/lib/entitlements";
 import { Eyebrow, Glyph } from "@/components/primitives";
 export const dynamic = "force-dynamic";
 
@@ -20,8 +22,21 @@ const statusLabel = (locale: "en" | "es") => ({
 export default async function MySnapLinks({ searchParams }: { searchParams: Promise<{ lang?: string }> }) {
   const locale = localeFrom(await searchParams);
   const t = getDict(locale);
+  const es = locale === "es";
   const L = (h: string) => withLang(h, locale);
+  const uid = await getSessionUserId();
   const profiles = await listMyProfiles();
+  const devices = uid && db ? await repo.devices.byAssignedUser(uid) : [];
+  const devicesByProfile = new Map<string, number>();
+  for (const d of devices) if (d.profileId) devicesByProfile.set(d.profileId, (devicesByProfile.get(d.profileId) ?? 0) + 1);
+  const needsActivationCount = devices.filter((d) => d.status === "assigned").length;
+  const showNetworking = uid ? await hasEntitlement(uid, ENTITLEMENT_SOLO_NETWORKING) : false;
+  let showResume = false;
+  if (db && uid) {
+    const resumeSettings = await repo.resumeSettings.get();
+    const granted = resumeSettings.requiredEntitlement ? await hasEntitlement(uid, resumeSettings.requiredEntitlement) : false;
+    showResume = resumeSettings.featureEnabled && meetsEntitlementRequirement(resumeSettings.requiredEntitlement, granted);
+  }
   const showPreviewDemo = process.env.VERCEL_ENV !== "production";
   const TL = typeLabel(locale); const SL = statusLabel(locale);
 
@@ -34,6 +49,52 @@ export default async function MySnapLinks({ searchParams }: { searchParams: Prom
           className="inline-flex items-center gap-1.5 rounded-full bg-ink text-bg px-5 py-2.5 text-sm font-medium no-underline hover:bg-gold transition-colors whitespace-nowrap">
           + {locale === "es" ? "Crear" : "Create"}
         </Link>
+      </div>
+
+      <div className="mb-6 rounded-xl border border-line bg-bg-raised p-5">
+        <p className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-gold mb-4">{es ? "Tu SnapLink" : "Your SnapLink"}</p>
+        <div className="grid gap-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-ink-soft">{es ? "Cuenta" : "Account"}</span>
+            <span className="inline-flex items-center gap-1.5 text-ok"><Glyph.check className="w-4 h-4" />{es ? "Lista" : "Ready"}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-ink-soft">{es ? "Perfil" : "Profile"}</span>
+            {profiles.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5 text-ok"><Glyph.check className="w-4 h-4" />{es ? "Listo" : "Ready"}</span>
+            ) : (
+              <Link href={L("/app/create")} className="text-xs text-gold hover:underline no-underline">{es ? "Configurar" : "Set up"}</Link>
+            )}
+          </div>
+          {devices.length > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-ink-soft">{es ? "Hardware" : "Hardware"}</span>
+              {needsActivationCount > 0 ? (
+                <Link href={L("/app/hardware")} className="inline-flex items-center gap-1 rounded-full bg-ink text-bg px-3.5 py-1.5 text-xs font-medium no-underline hover:bg-gold transition-colors">
+                  {needsActivationCount} {es ? "listo para activar" : "ready to activate"}
+                </Link>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-ok"><Glyph.check className="w-4 h-4" />{es ? "Activo" : "Active"}</span>
+              )}
+            </div>
+          )}
+          {showNetworking && (
+            <div className="flex items-center justify-between">
+              <span className="text-ink-soft">{es ? "Networking" : "Networking"}</span>
+              <Link href={L("/app/networking")} className="inline-flex items-center gap-1.5 text-xs text-gold hover:underline no-underline">
+                {es ? "Desbloqueado" : "Unlocked"} · {es ? "Abrir" : "Open"}
+              </Link>
+            </div>
+          )}
+          {showResume && (
+            <div className="flex items-center justify-between">
+              <span className="text-ink-soft">{es ? "Profesional" : "Professional"}</span>
+              <Link href={L("/app/resume")} className="inline-flex items-center gap-1.5 text-xs text-gold hover:underline no-underline">
+                {es ? "Desbloqueado" : "Unlocked"} · {es ? "Abrir" : "Open"}
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
 
       {showPreviewDemo && (
@@ -61,7 +122,7 @@ export default async function MySnapLinks({ searchParams }: { searchParams: Prom
         <div className="flex flex-col gap-3">
           {profiles.map((p) => {
             const initials = p.displayName.split(" ").map((s) => s[0]).slice(0, 2).join("");
-            const devices = DEMO_DEVICES[p.id]?.length ?? 0;
+            const deviceCount = devicesByProfile.get(p.id) ?? 0;
             const dot = p.status === "active" ? "bg-ok" : p.status === "draft" ? "bg-warn" : "bg-ink-faint";
             return (
               <div key={p.id} className="rounded-xl border border-line bg-bg-raised p-5 flex items-center gap-4">
@@ -75,7 +136,7 @@ export default async function MySnapLinks({ searchParams }: { searchParams: Prom
                     <span className="font-mono">{TL[p.type as "personal" | "business" | "kids"] ?? p.type}</span>
                     <span className="mx-1.5">·</span>
                     <span className="inline-flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{SL[p.status]}</span>
-                    {devices > 0 && <><span className="mx-1.5">·</span>{devices} {locale === "es" ? "dispositivos" : "devices"}</>}
+                    {deviceCount > 0 && <><span className="mx-1.5">·</span>{deviceCount} {locale === "es" ? "dispositivos" : "devices"}</>}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

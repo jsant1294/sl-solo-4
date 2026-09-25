@@ -7,6 +7,7 @@ const schema = z.object({
   type: z.enum([
     "video_impression", "video_start", "video_complete", "video_cta_click", "product_view", "checkout_initiated", "purchase",
     "purpose_view", "purpose_selected", "purpose_modal_open", "purpose_product_clicked", "purpose_all_hardware_clicked",
+    "resume_view", "resume_share", "resume_download", "resume_contact_click",
   ]),
   productId: z.string().optional(), mediaId: z.string().optional(),
   purpose: z.string().optional(), locale: z.enum(["en", "es"]).optional(),

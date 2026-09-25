@@ -10,11 +10,15 @@ type Step = "code" | "choose" | "test" | "success";
 
 type ActivationProfile = { id: string; displayName: string; username: string };
 
-export function ActivationFlow({ locale, profiles, devices }: { locale: Locale; profiles: ActivationProfile[]; devices: { code: string; status: string; label: string }[] }) {
+export function ActivationFlow({ locale, profiles, devices, initialCode }: { locale: Locale; profiles: ActivationProfile[]; devices: { code: string; status: string; label: string }[]; initialCode?: string }) {
   const t = getDict(locale);
   const router = useRouter();
   const [step, setStep] = useState<Step>("code");
-  const [code, setCode] = useState("");
+  // Prefilled only as a convenience (e.g. arriving from a device's own /t/{code} tap or the
+  // My Hardware "Activate" button) so the customer doesn't retype a code the system already
+  // associates with their account — claimDevice() independently re-verifies ownership/status
+  // server-side regardless of what code is submitted, so this is never trusted as-is.
+  const [code, setCode] = useState(initialCode ? initialCode.toUpperCase() : "");
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
   const [tapped, setTapped] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -23,6 +27,7 @@ export function ActivationFlow({ locale, profiles, devices }: { locale: Locale; 
   const chosen = profiles.find((p) => p.id === profileId);
   const steps: Step[] = ["code", "choose", "test", "success"];
   const idx = steps.indexOf(step);
+  const remaining = devices.filter((d) => d.status === "assigned" && d.code !== code);
 
   return (
     <div>
@@ -95,9 +100,21 @@ export function ActivationFlow({ locale, profiles, devices }: { locale: Locale; 
           </div>
           <h2 className="font-display text-2xl font-semibold text-center mt-5">{t.activate.success}</h2>
           <p className="text-ink-soft text-center mt-2">{t.activate.successBody}</p>
+          {remaining.length > 0 && (
+            <p className="text-sm text-gold text-center mt-4">
+              {locale === "es"
+                ? `Te queda${remaining.length > 1 ? "n" : ""} ${remaining.length} pieza${remaining.length > 1 ? "s" : ""} de tu kit por activar — todas al mismo perfil.`
+                : `${remaining.length} more piece${remaining.length > 1 ? "s" : ""} from your kit to activate — claim them all to the same profile.`}
+            </p>
+          )}
           <button disabled={!chosen} onClick={() => chosen && router.push(withLang(`/u/${chosen.username}`, locale))} className="btn-primary mt-6">
             {t.activate.viewProfile}
           </button>
+          {remaining.length > 0 && (
+            <button onClick={() => { setCode(""); setStep("code"); setTapped(false); }} className="btn-ghost mt-3">
+              {locale === "es" ? "Activar la siguiente pieza" : "Activate the next piece"}
+            </button>
+          )}
           <button onClick={() => router.push(withLang("/app", locale))} className="btn-ghost mt-3">{t.app.home}</button>
         </Card>
       )}

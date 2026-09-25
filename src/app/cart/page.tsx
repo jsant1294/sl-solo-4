@@ -38,6 +38,9 @@ export default async function Cart({ searchParams }: { searchParams: Promise<{ l
                     <ProductShot productType={r.productType} color="#14120F" />
                   </div>
                   <div className="flex-1 min-w-0">
+                    {r.bundleGroupId && (
+                      <p className="text-[0.65rem] uppercase tracking-widest text-gold mb-1">{es ? "Parte del Kit de Networking" : "Part of the Networking Kit"}</p>
+                    )}
                     <p className="font-medium">{r.productName}</p>
                     <p className="text-xs text-ink-faint">{r.variantLabel}{r.personalization ? ` · "${r.personalization}"` : ""}</p>
                     <p className="font-mono text-sm text-gold mt-1">{dollars(r.unitPrice)}</p>

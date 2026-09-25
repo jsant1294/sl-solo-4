@@ -1,27 +1,41 @@
 import { repo } from "@/db/repo";
 import { savePurposeOption } from "./actions";
 import { requireOperator } from "@/lib/operator";
+import { defaultPurposeRows } from "@/lib/purpose";
+import { ImageDrop } from "@/components/image-drop";
 
 export const dynamic = "force-dynamic";
 const input = "w-full rounded-md border border-line bg-bg-raised px-3 py-2 text-sm";
 const textarea = `${input} min-h-[84px]`;
 const label = "grid gap-1.5 text-xs font-medium text-ink-soft";
-const colors = ["coral", "violet", "blue", "aqua", "green", "yellow"] as const;
+const colors = ["coral", "violet", "blue", "aqua", "green", "yellow", "pink", "gold"] as const;
 
 export default async function PurposesEditor({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   await requireOperator();
-  const purposes = await repo.purposes.list().catch(() => null);
+  // New purpose keys (e.g. Sports, Performing arts) appear here automatically with default copy.
+  await repo.purposes.seedMissing(defaultPurposeRows()).catch(() => undefined);
+  const [purposes, library] = await Promise.all([repo.purposes.list().catch(() => null), repo.media.list().catch(() => [])]);
+  const images = library.filter((item) => item.kind === "image" && item.active && !item.fingerprint);
   const saved = (await searchParams).saved;
 
   return <div className="pb-20">
-    <div className="mb-8"><p className="font-mono text-xs uppercase tracking-widest text-gold">Purpose Finder</p><h1 className="font-display text-3xl font-semibold mt-2">Purpose cards</h1><p className="text-sm text-ink-faint mt-2 max-w-2xl">Edit the six purpose cards and their modal content. Which real hardware each purpose recommends is matched automatically from product tags and isn&apos;t editable here.</p></div>
-    {purposes === null && <p className="text-sm text-warn">Migration not applied yet — run <code>npm run db:push</code>, then seed the six purpose rows.</p>}
-    {purposes !== null && purposes.length === 0 && <p className="text-sm text-ink-faint">No purpose rows found — seed the six purposes first.</p>}
+    <div className="mb-8"><p className="font-mono text-xs uppercase tracking-widest text-gold">Purpose Finder</p><h1 className="font-display text-3xl font-semibold mt-2">Purpose cards</h1><p className="text-sm text-ink-faint mt-2 max-w-2xl">Edit the purpose cards on the homepage (&quot;What&apos;s your SnapLink for?&quot;): card image, copy, and the modal&apos;s example / create-yours buttons. Which real hardware each purpose recommends is matched automatically from product tags and isn&apos;t editable here.</p></div>
+    {purposes === null && <p className="text-sm text-warn">Migration not applied yet — run <code>npm run db:push</code>, then reload this page.</p>}
+    {purposes !== null && purposes.length === 0 && <p className="text-sm text-ink-faint">No purpose rows found — reload this page to create the defaults.</p>}
     <div className="grid gap-5">{(purposes ?? []).map((purpose, index) => <details key={purpose.id} open={index === 0 || saved === purpose.id} className="group rounded-xl border border-line bg-bg-raised shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5"><div><span className="font-mono text-[0.65rem] uppercase tracking-widest text-gold">{String(index + 1).padStart(2, "0")} · {purpose.key}</span><h2 className="font-display text-xl mt-1">{purpose.titleEn}</h2></div><div className="flex items-center gap-3"><span className={`rounded-full px-2.5 py-1 text-xs ${purpose.active ? "bg-ok/10 text-ok" : "bg-bg-sunken text-ink-faint"}`}>{purpose.active ? "Visible" : "Hidden"}</span><span className="text-ink-faint group-open:rotate-180">⌄</span></div></summary>
       <form action={savePurposeOption} className="grid gap-6 border-t border-line p-5">
         <input type="hidden" name="id" value={purpose.id}/>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="active" defaultChecked={purpose.active}/> Show this purpose</label>
+        <fieldset className="grid gap-4 rounded-lg border border-line p-4"><legend className="px-2 font-mono text-xs text-gold">CARD IMAGE</legend>
+          <ImageDrop current={purpose.image ? { url: purpose.image.url, alt: purpose.image.alt ?? "" } : null}/>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <label className={label}>…or pick from the media library<select className={input} name="imageMediaId" defaultValue={purpose.imageMediaId ?? ""}><option value="">No image — use matched product photo</option>{images.map((item) => <option key={item.id} value={item.id}>{item.alt || item.url.split("/").pop()}</option>)}</select></label>
+            <label className={label}>Image description (new uploads)<input className={input} name="imageAlt" placeholder="Athlete holding a SnapLink bracelet"/></label>
+            <label className={label}>Focal point (new uploads)<input className={input} name="imagePosition" placeholder="50% 30%"/></label>
+          </div>
+          <p className="text-xs text-ink-faint">Portrait photos work best (3:4). A new upload replaces the library pick and is saved to the media library for reuse.</p>
+        </fieldset>
         <div className="grid md:grid-cols-2 gap-5">
           <fieldset className="grid gap-4 rounded-lg border border-line p-4"><legend className="px-2 font-mono text-xs text-gold">EN</legend>
             <label className={label}>Card title<input className={input} name="titleEn" defaultValue={purpose.titleEn} required/></label>
@@ -41,6 +55,17 @@ export default async function PurposesEditor({ searchParams }: { searchParams: P
           </fieldset>
         </div>
         {purpose.key === "kids" && <label className={label}>Character teaser (comma-separated names)<input className={input} name="characterTeaser" defaultValue={(purpose.characterTeaser ?? []).join(", ")}/></label>}
+        <fieldset className="grid gap-4 rounded-lg border border-line p-4"><legend className="px-2 font-mono text-xs text-gold">MODAL BUTTONS (OPTIONAL)</legend>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <label className={label}>&quot;Create yours&quot; destination<input className={input} name="startHref" defaultValue={purpose.startHref ?? ""} placeholder="/get-started?path=athlete"/></label>
+            <label className={label}>Label EN<input className={input} name="startLabelEn" defaultValue={purpose.startLabelEn ?? ""} placeholder="Create yours"/></label>
+            <label className={label}>Label ES<input className={input} name="startLabelEs" defaultValue={purpose.startLabelEs ?? ""} placeholder="Crea el tuyo"/></label>
+            <label className={label}>Example destination<input className={input} name="exampleHref" defaultValue={purpose.exampleHref ?? ""} placeholder="/examples/athlete"/></label>
+            <label className={label}>Label EN<input className={input} name="exampleLabelEn" defaultValue={purpose.exampleLabelEn ?? ""} placeholder="See an example"/></label>
+            <label className={label}>Label ES<input className={input} name="exampleLabelEs" defaultValue={purpose.exampleLabelEs ?? ""} placeholder="Ver ejemplo"/></label>
+          </div>
+          <p className="text-xs text-ink-faint">Leave a destination empty to hide that button. Start paths: <code>/get-started?path=</code> athlete · cheer · actor · dancer · creator · professional. Examples: <code>/examples/</code> athlete · cheer · actor · dancer · combined · nurse · realtor.</p>
+        </fieldset>
         <div className="grid sm:grid-cols-3 gap-4">
           <label className={label}>Accent color<select className={input} name="color" defaultValue={purpose.color}>{colors.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
           <label className={label}>Secondary CTA destination<input className={input} name="secondaryHref" defaultValue={purpose.secondaryHref} placeholder="/hardware"/></label>

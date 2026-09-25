@@ -30,6 +30,44 @@ export async function addToCart(line: CartLine) {
   revalidatePath("/cart");
 }
 
+/**
+ * Adds a bundle (e.g. the Networking Kit) to the cart as N separate lines sharing one
+ * bundleGroupId — one line per slot, resolved to the customer's chosen option. Validated
+ * fully server-side against the bundle's slot definitions; priceCart() re-validates again
+ * at read/checkout time so a tampered cart cookie can never misprice or fake an entitlement.
+ */
+export async function addBundleToCart(input: { bundleProductId: string; choices: Record<string, { productId: string; variantId: string | null }> }) {
+  if (!db) return { ok: false as const, error: "This kit requires online checkout" };
+  const safe = z.object({
+    bundleProductId: z.string().min(1).max(80),
+    choices: z.record(z.string().min(1).max(60), z.object({ productId: z.string().min(1).max(80), variantId: z.string().max(80).nullable() })),
+  }).parse(input);
+
+  const bundle = await repo.products.byId(safe.bundleProductId);
+  if (!bundle || !bundle.active || bundle.productType !== "bundle") return { ok: false as const, error: "This kit is no longer available" };
+  const slots = await repo.products.bundleSlots(safe.bundleProductId);
+  if (!slots.length) return { ok: false as const, error: "This kit is not configured correctly" };
+
+  const groupId = nanoid(12);
+  const newLines: CartLine[] = [];
+  for (const slot of slots) {
+    const choice = safe.choices[slot.slotKey];
+    if (!choice) return { ok: false as const, error: `Choose an option for ${slot.label}` };
+    const matched = slot.options.find((opt) => opt.componentProductId === choice.productId && opt.componentVariantId === choice.variantId);
+    if (!matched || !matched.product?.active) return { ok: false as const, error: `Invalid selection for ${slot.label}` };
+    if ((matched.variant?.stockStatus ?? matched.product.stockStatus) === "out_of_stock") return { ok: false as const, error: `${slot.label} is out of stock` };
+    newLines.push({
+      productId: choice.productId, variantId: choice.variantId, quantity: 1,
+      bundleGroupId: groupId, bundleProductId: safe.bundleProductId, bundleSlotKey: slot.slotKey,
+    });
+  }
+
+  const cart = await readCart();
+  await writeCart([...cart, ...newLines]);
+  revalidatePath("/cart");
+  return { ok: true as const };
+}
+
 export async function updateQty(index: number, quantity: number) {
   if (!Number.isInteger(index) || index < 0 || !Number.isInteger(quantity) || quantity > 10) return;
   const cart = await readCart();
@@ -84,6 +122,8 @@ export async function checkout(input: {
     customArtPriceCents: r.customArtPriceCents ?? null, customArtNotes: r.customArtNotes ?? null,
     customArtFileUrl: r.customArtFileUrl ?? null,
     quantity: r.quantity, unitPrice: r.unitPrice, deviceId: null,
+    bundleGroupId: r.bundleGroupId, grantsEntitlement: r.grantsEntitlement,
+    entitlementGrants: r.entitlementGrants,
   }));
 
   let orderId: string;
@@ -138,12 +178,17 @@ export async function checkout(input: {
     return { ok: false, error: "Secure checkout is temporarily unavailable" };
   }
   if (db) for (const row of rows) await repo.commerce.record({ type: "checkout_initiated", productId: row.productId, orderId });
+  if (db) for (const bundleProductId of new Set(rows.map((r) => r.bundleProductId).filter(Boolean) as string[])) {
+    await repo.commerce.record({ type: "networking_kit_checkout_started", productId: bundleProductId, orderId });
+  }
 
   // Simulated path (no Stripe key): mark paid now so golden path flows.
   if (pay.simulated) {
     if (db) {
       await repo.orders.markPaidOnce(orderId, subtotal);
       for (const row of rows) await repo.commerce.record({ type: "purchase", productId: row.productId, orderId });
+      const grantedKeys = await repo.entitlements.grantForPaidOrder(orderId, userId);
+      if (grantedKeys.length) await repo.commerce.record({ type: "networking_kit_purchased", orderId });
       const o = await repo.orders.byId(orderId);
       if (o) {
         await notifications.operatorNewOrder({ orderNumber, email: safeInput.email, total: subtotal });

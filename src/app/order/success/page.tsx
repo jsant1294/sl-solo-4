@@ -3,6 +3,7 @@ import { localeFrom, withLang } from "@/i18n/util";
 import { ClearPaidCart } from "./clear-paid-cart";
 import { dollars } from "@/db/commerce-demo";
 import { data } from "@/lib/data";
+import { getSessionUserId } from "@/lib/auth";
 import { SiteHeader } from "@/components/site-chrome";
 import { Section, Glyph } from "@/components/primitives";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export default async function OrderSuccess({ searchParams }: {
   const L = (href: string) => withLang(href, locale);
   const es = locale === "es";
   const candidate = sp.order ? await data.orderById(sp.order) : undefined;
+  const signedIn = Boolean(await getSessionUserId());
   const simulated = !process.env.STRIPE_SECRET_KEY && sp.simulated === "1";
   const sessionMatches = Boolean(candidate && (
     (sp.session_id && candidate.stripeSessionId === sp.session_id) || simulated
@@ -54,10 +56,34 @@ export default async function OrderSuccess({ searchParams }: {
           <Link href={L("/hardware")} className="rounded-full border border-line-strong px-5 py-2.5 text-sm no-underline text-ink hover:border-gold hover:text-gold transition-colors">
             {es ? "Seguir comprando" : "Keep shopping"}
           </Link>
-          {paid && <Link href={L("/join")} className="rounded-full bg-ink text-bg px-5 py-2.5 text-sm font-medium no-underline hover:bg-gold transition-colors">
-            {es ? "Crear tu perfil" : "Create your profile"}
-          </Link>}
         </div>
+
+        {paid && (
+          <div className="mt-10 rounded-xl border border-line bg-bg-raised p-6 text-left">
+            <p className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-gold mb-4 text-center">
+              {es ? "Tus próximos pasos" : "Your next steps"}
+            </p>
+            <ol className="grid gap-3 text-sm text-ink-soft">
+              <li className="flex gap-3"><span className="font-mono text-ink-faint">1</span>{es ? "Crea o accede a tu cuenta de SnapLink" : "Create or access your SnapLink account"}</li>
+              <li className="flex gap-3"><span className="font-mono text-ink-faint">2</span>{es ? "Construye tu perfil" : "Build your profile"}</li>
+              <li className="flex gap-3"><span className="font-mono text-ink-faint">3</span>{es ? "Activa tu hardware cuando llegue" : "Activate your hardware when it arrives"}</li>
+            </ol>
+            <div className="mt-5 text-center">
+              {signedIn ? (
+                <Link href={L("/app")} className="inline-flex rounded-full bg-ink text-bg px-6 py-3 text-sm font-medium no-underline hover:bg-gold transition-colors">
+                  {es ? "Ir a Mi SnapLink" : "Go to My SnapLink"}
+                </Link>
+              ) : (
+                <Link href={L("/join")} className="inline-flex rounded-full bg-ink text-bg px-6 py-3 text-sm font-medium no-underline hover:bg-gold transition-colors">
+                  {es ? "Crear mi SnapLink" : "Create My SnapLink"}
+                </Link>
+              )}
+              <p className="text-xs text-ink-faint mt-3 max-w-xs mx-auto">
+                {es ? "La activación física se hace cuando tu SnapLink llegue — te enviaremos instrucciones." : "Physical activation happens once your SnapLink arrives — we'll email you instructions."}
+              </p>
+            </div>
+          </div>
+        )}
       </Section>
     </>
   );

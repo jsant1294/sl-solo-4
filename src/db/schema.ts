@@ -12,6 +12,10 @@ export const localeEnum = pgEnum("locale", ["en", "es"]);
 export const themeEnum = pgEnum("theme", ["obsidian", "ivory", "signature_gold"]);
 export const deviceTypeEnum = pgEnum("device_type", [
   "phone_plate", "card", "stand", "sticker", "bracelet", "keychain",
+  // "bundle" is a products.productType value only — a multi-item kit (e.g. the
+  // Networking Kit) that expands into several ordinary devices at fulfillment.
+  // Never a real devices.type.
+  "bundle",
 ]);
 export const deviceStatusEnum = pgEnum("device_status", ["unclaimed", "assigned", "paired", "disabled", "lost", "replaced"]);
 export const linkTypeEnum = pgEnum("link_type", [
@@ -294,9 +298,14 @@ export const products = pgTable("products", {
   fulfillmentNotes: text("fulfillment_notes"),          // INTERNAL ONLY — never public
   seoTitle: text("seo_title"),
   seoDescription: text("seo_description"),
+  // Perpetual software entitlement granted to the buyer once an order containing this
+  // product is paid — e.g. "solo_networking" for the Networking Kit. Null = grants nothing.
+  // Not a subscription: see src/lib/entitlements.ts, the single choke point that checks it.
+  grantsEntitlement: text("grants_entitlement"),
   createdAt: now(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({ slugIdx: uniqueIndex("products_slug_idx").on(t.slug) }));
+
 
 /* — PricingPlan — CMS-editable tiers. `key` is what `users.plan` stores; changing price,
    features, or adding/retiring a tier here never requires a code deploy. No plan currently
@@ -357,7 +366,7 @@ export const storefrontSections = pgTable("storefront_sections", {
    src/lib/purpose.ts, same split as CMS controlling copy but not component
    choice elsewhere. — */
 export const purposeKeyEnum = pgEnum("purpose_key", [
-  "personal", "creator", "professional", "share", "protect", "kids",
+  "personal", "creator", "professional", "share", "protect", "kids", "sports", "stage",
 ]);
 export const purposeOptions = pgTable("purpose_options", {
   id: id(),
@@ -378,12 +387,35 @@ export const purposeOptions = pgTable("purpose_options", {
   privacyPointsEn: jsonb("privacy_points_en").$type<{ t: string; b: string }[]>(),
   privacyPointsEs: jsonb("privacy_points_es").$type<{ t: string; b: string }[]>(),
   characterTeaser: jsonb("character_teaser").$type<string[]>(),
+  // Card image (operator-uploaded via the media library). Null → matched product photo.
+  imageMediaId: text("image_media_id").references(() => media.id, { onDelete: "set null" }),
+  // Optional modal actions: a live example and a "create yours" start path.
+  exampleHref: text("example_href"),
+  exampleLabelEn: text("example_label_en"),
+  exampleLabelEs: text("example_label_es"),
+  startHref: text("start_href"),
+  startLabelEn: text("start_label_en"),
+  startLabelEs: text("start_label_es"),
   active: boolean("active").default(true).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: now(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({ keyIdx: uniqueIndex("purpose_options_key_idx").on(t.key) }));
 export type PurposeOption = typeof purposeOptions.$inferSelect;
+
+/* — DemoSample — operator-managed media for the fictional Talent sample profiles shown on the
+   homepage phone demo and /examples/[key]. Copy stays code-defined (lib/samples, lib/talent/fixtures, lib/pro-samples);
+   only imagery, reel, visibility and order are CMS-editable. — */
+export const demoSamples = pgTable("demo_samples", {
+  id: id(),
+  key: text("key").notNull(), // a SampleKey from lib/samples
+  portraitMediaId: text("portrait_media_id").references(() => media.id, { onDelete: "set null" }),
+  reelMediaId: text("reel_media_id").references(() => media.id, { onDelete: "set null" }),
+  active: boolean("active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ keyIdx: uniqueIndex("demo_samples_key_idx").on(t.key) }));
+export type DemoSample = typeof demoSamples.$inferSelect;
 
 export const collectionKeyEnum = pgEnum("collection_key", [
   "signature", "color", "patterns", "kids",
@@ -416,6 +448,10 @@ export const commerceEventTypeEnum = pgEnum("commerce_event_type", [
   "video_impression", "video_start", "video_complete", "video_cta_click",
   "product_view", "checkout_initiated", "purchase",
   "purpose_view", "purpose_selected", "purpose_modal_open", "purpose_product_clicked", "purpose_all_hardware_clicked",
+  "networking_kit_viewed", "networking_kit_checkout_started", "networking_kit_purchased",
+  "networking_opened", "card_scan_started", "card_scan_completed", "card_scan_failed",
+  "networking_lead_saved", "networking_lead_updated",
+  "resume_view", "resume_share", "resume_download", "resume_contact_click",
 ]);
 
 export const commerceEvents = pgTable("commerce_events", {
@@ -441,6 +477,36 @@ export const productVariants = pgTable("product_variants", {
   stockStatus: stockStatusEnum("stock_status").default("in_stock").notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
 }, (t) => ({ productIdx: index("variants_product_idx").on(t.productId) }));
+
+/**
+ * — Bundle slots — a bundle product (productType "bundle") is composed of one or more
+ * slots (e.g. "phone_tag", "nfc_card", "wearable"), each resolved to a chosen component
+ * product/variant at add-to-cart time. A slot with a single option has no customer choice;
+ * a slot with multiple options (e.g. bracelet material) does. This generalizes to future
+ * kits without schema changes — see docs/COMMERCE.md.
+ */
+export const productBundleSlots = pgTable("product_bundle_slots", {
+  id: id(),
+  bundleProductId: text("bundle_product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  slotKey: text("slot_key").notNull(),
+  label: text("label").notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  allowCustomerChoice: boolean("allow_customer_choice").default(false).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+}, (t) => ({
+  bundleIdx: index("bundle_slots_bundle_idx").on(t.bundleProductId),
+  slotKeyIdx: uniqueIndex("bundle_slots_bundle_slotkey_idx").on(t.bundleProductId, t.slotKey),
+}));
+
+export const productBundleSlotOptions = pgTable("product_bundle_slot_options", {
+  id: id(),
+  slotId: text("slot_id").notNull().references(() => productBundleSlots.id, { onDelete: "cascade" }),
+  componentProductId: text("component_product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  componentVariantId: text("component_variant_id").references(() => productVariants.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").default(0).notNull(),
+}, (t) => ({ slotIdx: index("bundle_slot_options_slot_idx").on(t.slotId) }));
+export type ProductBundleSlot = typeof productBundleSlots.$inferSelect;
+export type ProductBundleSlotOption = typeof productBundleSlotOptions.$inferSelect;
 
 export const productPriceAudits = pgTable("product_price_audits", {
   id: id(),
@@ -538,7 +604,282 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").default(1).notNull(),
   unitPrice: integer("unit_price").notNull(),           // cents snapshot
   deviceId: text("device_id"),                          // assigned in fulfillment
-}, (t) => ({ orderIdx: index("order_items_order_idx").on(t.orderId) }));
+  // Shared by every line item that came from one bundle "add to cart" action (e.g. the
+  // Networking Kit's Phone Tag + NFC Card + wearable). Null for ordinary single-item lines.
+  // Purely for display/grouping — fulfillment still operates per-orderItem, unchanged.
+  bundleGroupId: text("bundle_group_id"),
+  // Snapshot of the bundle product's grantsEntitlement at checkout (stamped onto exactly one
+  // item per bundle group by the server-validated bundle-pricing path in src/lib/cart.ts —
+  // never trust a client-supplied value here). Null for ordinary lines and non-entitling bundles.
+  grantsEntitlement: text("grants_entitlement"),
+}, (t) => ({
+  orderIdx: index("order_items_order_idx").on(t.orderId),
+  bundleGroupIdx: index("order_items_bundle_group_idx").on(t.bundleGroupId),
+}));
+
+/**
+ * — Entitlements — perpetual, non-subscription feature unlocks granted by a qualifying
+ * purchase (e.g. "solo_networking" from the Networking Kit). See src/lib/entitlements.ts,
+ * the single choke point every gated feature checks — never scatter ad hoc checks.
+ */
+export const entitlements = pgTable("entitlements", {
+  id: id(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  sourceOrderId: text("source_order_id").references(() => orders.id, { onDelete: "set null" }),
+  grantedAt: timestamp("granted_at", { withTimezone: true }).defaultNow().notNull(),
+  revoked: boolean("revoked").default(false).notNull(),
+}, (t) => ({ userKeyIdx: uniqueIndex("entitlements_user_key_idx").on(t.userId, t.key) }));
+
+/**
+ * — Multi-entitlement commerce foundation — a product/bundle can grant zero, one, or
+ * several capabilities (e.g. a future "Professional Networking Kit" granting both
+ * solo_networking and solo_resume). This is the CANONICAL source of truth for NEW
+ * product configuration; the legacy scalar `products.grantsEntitlement` column above
+ * is kept, untouched, purely for backward compatibility with the existing Networking
+ * Kit and any pre-existing orders — see docs/COMMERCE.md and src/lib/entitlements.ts
+ * (KNOWN_ENTITLEMENTS is the registry of valid keys these tables may reference).
+ */
+export const productEntitlementGrants = pgTable("product_entitlement_grants", {
+  id: id(),
+  productId: text("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  entitlementKey: text("entitlement_key").notNull(),
+  createdAt: now(),
+}, (t) => ({ productKeyIdx: uniqueIndex("product_entitlement_grants_product_key_idx").on(t.productId, t.entitlementKey) }));
+export type ProductEntitlementGrant = typeof productEntitlementGrants.$inferSelect;
+
+/**
+ * Immutable purchase-time snapshot — resolved server-side and written inside the SAME
+ * transaction that creates the order/orderItems (never trust the cart cookie; never
+ * re-derived from current product config after the order exists). For a bundle, only
+ * the single entitlement-carrier line (see src/lib/cart.ts priceBundleGroup) gets rows
+ * here — physical component lines never independently duplicate the grant.
+ */
+export const orderItemEntitlementGrants = pgTable("order_item_entitlement_grants", {
+  id: id(),
+  orderItemId: text("order_item_id").notNull().references(() => orderItems.id, { onDelete: "cascade" }),
+  entitlementKey: text("entitlement_key").notNull(),
+  createdAt: now(),
+}, (t) => ({ itemIdx: index("order_item_entitlement_grants_item_idx").on(t.orderItemId) }));
+export type OrderItemEntitlementGrant = typeof orderItemEntitlementGrants.$inferSelect;
+export type Entitlement = typeof entitlements.$inferSelect;
+
+/**
+ * — NetworkingLead — a Solo owner's private networking rolodex. Deliberately separate from
+ * contactLeads (profile-scoped inbound visitor capture, always free): this is owner-scoped
+ * (not tied to which profile someone visited), gated by the solo_networking entitlement, and
+ * carries fields (company, jobTitle, notes, followUpAt) that contactLeads has no use for.
+ * See docs/NETWORKING.md.
+ */
+export const networkingLeadSourceEnum = pgEnum("networking_lead_source", ["business_card_scan", "manual"]);
+export const networkingLeads = pgTable("networking_leads", {
+  id: id(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  displayName: text("display_name").notNull(),
+  company: text("company"),
+  jobTitle: text("job_title"),
+  email: text("email"),
+  phone: text("phone"),
+  website: text("website"),
+  addressLine: text("address_line"),
+  city: text("city"),
+  region: text("region"),
+  postalCode: text("postal_code"),
+  country: text("country"),
+  linkedinUrl: text("linkedin_url"),
+  notes: text("notes"),
+  source: networkingLeadSourceEnum("source").default("manual").notNull(),
+  // OCR's raw text output, kept for debugging/recovery — never the source image itself
+  // (the scanned photo is used only in-memory for extraction and never persisted; see
+  // docs/NETWORKING.md "Card image privacy"). Null for manual entries.
+  rawExtraction: text("raw_extraction"),
+  followUpAt: timestamp("follow_up_at", { withTimezone: true }),
+  lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
+  createdAt: now(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  userIdx: index("networking_leads_user_idx").on(t.userId),
+  userEmailIdx: index("networking_leads_user_email_idx").on(t.userId, t.email),
+  userPhoneIdx: index("networking_leads_user_phone_idx").on(t.userId, t.phone),
+}));
+export type NetworkingLead = typeof networkingLeads.$inferSelect;
+
+/**
+ * — NetworkingSettings — CMS toggle row for the Networking feature, same "operator-editable
+ * table" pattern as pricingPlans/purposeOptions. Fixed singleton id ("global") so there's
+ * always at most one row; repo defaults to all-enabled if the row doesn't exist yet so the
+ * feature works before an operator ever visits /operator/networking.
+ */
+export const networkingSettings = pgTable("networking_settings", {
+  id: text("id").primaryKey(),
+  networkingEnabled: boolean("networking_enabled").default(true).notNull(),
+  cardScannerEnabled: boolean("card_scanner_enabled").default(true).notNull(),
+  manualConnectionsEnabled: boolean("manual_connections_enabled").default(true).notNull(),
+  followUpEnabled: boolean("follow_up_enabled").default(true).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type NetworkingSettings = typeof networkingSettings.$inferSelect;
+
+/**
+ * — Resume / Career Profile (Phase 3) — attaches to a profile, one per profile. Contact
+ * fields (email/phone/location/website) are deliberately NOT duplicated here — the resume
+ * reads them live from the parent `profiles` row (see docs/RESUME.md "No duplicated contact
+ * data") and only carries per-field visibility toggles. Dates are free text (not real date
+ * columns) because resumes routinely carry partial/approximate dates ("2019", "Present").
+ */
+export const resumeDataSourceEnum = pgEnum("resume_data_source", ["manual", "extracted"]);
+export const resumeExtractionStatusEnum = pgEnum("resume_extraction_status", ["pending", "completed", "failed"]);
+
+export const resumeProfiles = pgTable("resume_profiles", {
+  id: id(),
+  profileId: text("profile_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  // Denormalized for cheap, defense-in-depth owner-scoped queries (same pattern as
+  // devices.profileId + devices.assignedUserId) — never trust profileId alone for ownership.
+  ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  headline: text("headline"),
+  professionalSummary: text("professional_summary"),
+  dataSource: resumeDataSourceEnum("data_source"),
+  // Original uploaded file — reuses the existing media table/StorageProvider, never a
+  // separate upload system. Null until the owner uploads something.
+  originalResumeMediaId: text("original_resume_media_id").references(() => media.id, { onDelete: "set null" }),
+  originalFileName: text("original_file_name"),
+  extractionProvider: text("extraction_provider"),
+  extractionModel: text("extraction_model"),
+  extractionStatus: resumeExtractionStatusEnum("extraction_status"),
+  extractionError: text("extraction_error"),
+  // Public visibility — every one of these defaults to the private/off side. The owner must
+  // explicitly enable each; the operator's global toggles in resumeSettings are an additional
+  // kill switch on top, never a replacement for this per-owner control.
+  publicEnabled: boolean("public_enabled").default(false).notNull(),
+  showSummary: boolean("show_summary").default(true).notNull(),
+  showExperience: boolean("show_experience").default(true).notNull(),
+  showEducation: boolean("show_education").default(true).notNull(),
+  showSkills: boolean("show_skills").default(true).notNull(),
+  showCertifications: boolean("show_certifications").default(true).notNull(),
+  showLanguages: boolean("show_languages").default(true).notNull(),
+  showProjects: boolean("show_projects").default(true).notNull(),
+  showEmail: boolean("show_email").default(false).notNull(),
+  showPhone: boolean("show_phone").default(false).notNull(),
+  showLocation: boolean("show_location").default(true).notNull(),
+  showWebsite: boolean("show_website").default(true).notNull(),
+  showOriginalPdf: boolean("show_original_pdf").default(false).notNull(),
+  ctaLabelEn: text("cta_label_en"),
+  ctaLabelEs: text("cta_label_es"),
+  createdAt: now(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  profileIdx: uniqueIndex("resume_profiles_profile_idx").on(t.profileId),
+  ownerIdx: index("resume_profiles_owner_idx").on(t.ownerUserId),
+}));
+export type ResumeProfile = typeof resumeProfiles.$inferSelect;
+
+const resumeSectionCols = {
+  id: id(),
+  resumeProfileId: text("resume_profile_id").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  visible: boolean("visible").default(true).notNull(),
+};
+
+export const resumeExperience = pgTable("resume_experience", {
+  ...resumeSectionCols,
+  resumeProfileId: text("resume_profile_id").notNull().references(() => resumeProfiles.id, { onDelete: "cascade" }),
+  company: text("company"),
+  title: text("title").notNull(),
+  location: text("location"),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  current: boolean("current").default(false).notNull(),
+  description: text("description"),
+}, (t) => ({ resumeIdx: index("resume_experience_resume_idx").on(t.resumeProfileId) }));
+export type ResumeExperience = typeof resumeExperience.$inferSelect;
+
+export const resumeEducation = pgTable("resume_education", {
+  ...resumeSectionCols,
+  resumeProfileId: text("resume_profile_id").notNull().references(() => resumeProfiles.id, { onDelete: "cascade" }),
+  institution: text("institution").notNull(),
+  degree: text("degree"),
+  fieldOfStudy: text("field_of_study"),
+  location: text("location"),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  description: text("description"),
+}, (t) => ({ resumeIdx: index("resume_education_resume_idx").on(t.resumeProfileId) }));
+export type ResumeEducation = typeof resumeEducation.$inferSelect;
+
+export const resumeSkills = pgTable("resume_skills", {
+  ...resumeSectionCols,
+  resumeProfileId: text("resume_profile_id").notNull().references(() => resumeProfiles.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  category: text("category"),
+}, (t) => ({ resumeIdx: index("resume_skills_resume_idx").on(t.resumeProfileId) }));
+export type ResumeSkill = typeof resumeSkills.$inferSelect;
+
+export const resumeCertifications = pgTable("resume_certifications", {
+  ...resumeSectionCols,
+  resumeProfileId: text("resume_profile_id").notNull().references(() => resumeProfiles.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  issuer: text("issuer"),
+  issueDate: text("issue_date"),
+  expirationDate: text("expiration_date"),
+  credentialId: text("credential_id"),
+  credentialUrl: text("credential_url"),
+}, (t) => ({ resumeIdx: index("resume_certifications_resume_idx").on(t.resumeProfileId) }));
+export type ResumeCertification = typeof resumeCertifications.$inferSelect;
+
+export const resumeLanguages = pgTable("resume_languages", {
+  ...resumeSectionCols,
+  resumeProfileId: text("resume_profile_id").notNull().references(() => resumeProfiles.id, { onDelete: "cascade" }),
+  language: text("language").notNull(),
+  proficiency: text("proficiency"),
+}, (t) => ({ resumeIdx: index("resume_languages_resume_idx").on(t.resumeProfileId) }));
+export type ResumeLanguage = typeof resumeLanguages.$inferSelect;
+
+export const resumeProjects = pgTable("resume_projects", {
+  ...resumeSectionCols,
+  resumeProfileId: text("resume_profile_id").notNull().references(() => resumeProfiles.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  role: text("role"),
+  description: text("description"),
+  url: text("url"),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+}, (t) => ({ resumeIdx: index("resume_projects_resume_idx").on(t.resumeProfileId) }));
+export type ResumeProject = typeof resumeProjects.$inferSelect;
+
+/**
+ * — ResumeSettings — CMS singleton, same operator-editable-table pattern as
+ * networkingSettings/pricingPlans. requiredEntitlement is nullable text (NOT hardcoded to
+ * solo_networking) — NULL means free; the operator can set it to any existing entitlement
+ * key later with no deploy. upsellProductSlug resolves live against the product catalog —
+ * never a hardcoded price/name. See docs/RESUME.md.
+ */
+export const resumeSettings = pgTable("resume_settings", {
+  id: text("id").primaryKey(),
+  featureEnabled: boolean("feature_enabled").default(true).notNull(),
+  manualBuilderEnabled: boolean("manual_builder_enabled").default(true).notNull(),
+  uploadEnabled: boolean("upload_enabled").default(true).notNull(),
+  aiExtractionEnabled: boolean("ai_extraction_enabled").default(true).notNull(),
+  publicPageEnabled: boolean("public_page_enabled").default(true).notNull(),
+  pdfDownloadEnabled: boolean("pdf_download_enabled").default(true).notNull(),
+  requiredEntitlement: text("required_entitlement"),
+  maxUploadSizeMb: integer("max_upload_size_mb").default(10).notNull(),
+  allowedDocumentTypes: jsonb("allowed_document_types").$type<string[]>().default(["application/pdf"]).notNull(),
+  ctaLabelEn: text("cta_label_en").default("View Resume").notNull(),
+  ctaLabelEs: text("cta_label_es").default("Ver currículum").notNull(),
+  sectionTitleEn: text("section_title_en").default("Professional").notNull(),
+  sectionTitleEs: text("section_title_es").default("Profesional").notNull(),
+  upsellHeadingEn: text("upsell_heading_en").default("Build your professional resume").notNull(),
+  upsellHeadingEs: text("upsell_heading_es").default("Crea tu currículum profesional").notNull(),
+  upsellBodyEn: text("upsell_body_en").default("Included with the SnapLink Networking Kit.").notNull(),
+  upsellBodyEs: text("upsell_body_es").default("Incluido con el Kit de Networking SnapLink.").notNull(),
+  upsellCtaEn: text("upsell_cta_en").default("Learn more").notNull(),
+  upsellCtaEs: text("upsell_cta_es").default("Más información").notNull(),
+  upsellProductSlug: text("upsell_product_slug"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type ResumeSettings = typeof resumeSettings.$inferSelect;
 
 export type Media = typeof media.$inferSelect;
 export type StorefrontSection = typeof storefrontSections.$inferSelect;

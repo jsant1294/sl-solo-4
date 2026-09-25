@@ -1,16 +1,22 @@
-import { eq, and, or, gte, lte, desc, asc, isNull, sql } from "drizzle-orm";
+import { eq, and, or, inArray, gte, lte, desc, asc, isNull, sql, ilike } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db } from "@/db";
 import {
-  products, productVariants, productPriceAudits, media, storefrontSections, commerceEvents, orders, orderItems, addresses, orderNotifications, stripeWebhookEvents,
-  users, profiles, profileLinks, destinations, devices, activityEvents, contactLeads, purposeOptions, collectionOptions, snapTrackSignups, pricingPlans,
+  products, productVariants, productBundleSlots, productBundleSlotOptions, productPriceAudits, media, storefrontSections, commerceEvents, orders, orderItems, addresses, orderNotifications, stripeWebhookEvents,
+  users, profiles, profileLinks, destinations, devices, activityEvents, contactLeads, purposeOptions, demoSamples, collectionOptions, snapTrackSignups, pricingPlans, entitlements,
+  networkingLeads, networkingSettings,
+  resumeProfiles, resumeExperience, resumeEducation, resumeSkills, resumeCertifications, resumeLanguages, resumeProjects, resumeSettings,
+  productEntitlementGrants, orderItemEntitlementGrants,
 } from "@/db/schema";
 import type {
   Product, ProductVariant, Order, OrderItem, Address, Media,
-  Profile, ProfileLink, Device,
+  Profile, ProfileLink, Device, NetworkingLead, NetworkingSettings,
+  ResumeProfile, ResumeSettings,
 } from "@/db/schema";
+import type { PgTable } from "drizzle-orm/pg-core";
 import { getProfileExperience } from "@/lib/profile-data";
 import { assignmentError, canOperatorTransitionDevice, canResolvePhysicalDevice, isProvisionableDeviceCode, isValidDeviceCode, normalizeDeviceCode } from "@/lib/device-lifecycle";
+import { isKnownEntitlementKey } from "@/lib/entitlement-registry";
 
 /**
  * REPOSITORY — the only place app code touches the DB. Every query is
@@ -72,6 +78,11 @@ export const repo = {
       const [row] = await d.update(products).set({ ...input, updatedAt: new Date() }).where(eq(products.id, id)).returning();
       return row;
     },
+    async create(input: Pick<typeof products.$inferInsert, "name" | "slug" | "basePrice" | "productType"> & Partial<typeof products.$inferInsert>) {
+      const d = requireDb();
+      const [row] = await d.insert(products).values(input).returning();
+      return row;
+    },
     async replaceVariants(productId: string, input: Array<Omit<typeof productVariants.$inferInsert, "productId">>) {
       const d = requireDb();
       await d.delete(productVariants).where(eq(productVariants.productId, productId));
@@ -104,6 +115,120 @@ export const repo = {
     async deleteMedia(id: string) {
       const d = requireDb();
       await d.delete(media).where(eq(media.id, id));
+    },
+    async bundleSlots(bundleProductId: string) {
+      const d = requireDb();
+      const slots = await d.select().from(productBundleSlots)
+        .where(eq(productBundleSlots.bundleProductId, bundleProductId)).orderBy(asc(productBundleSlots.sortOrder));
+      return Promise.all(slots.map(async (slot) => {
+        const optionRows = await d.select().from(productBundleSlotOptions)
+          .where(eq(productBundleSlotOptions.slotId, slot.id)).orderBy(asc(productBundleSlotOptions.sortOrder));
+        const options = await Promise.all(optionRows.map(async (opt) => {
+          const product = await this.byId(opt.componentProductId);
+          const variant = product?.variants.find((v) => v.id === opt.componentVariantId) ?? null;
+          return { ...opt, product, variant };
+        }));
+        return { ...slot, options };
+      }));
+    },
+    /** Replaces all slots+options for a bundle product in one transaction. */
+    async replaceBundleSlots(bundleProductId: string, slots: Array<{
+      slotKey: string; label: string; quantity: number; allowCustomerChoice: boolean;
+      options: Array<{ componentProductId: string; componentVariantId: string | null }>;
+    }>) {
+      const d = requireDb();
+      await d.transaction(async (tx) => {
+        const existing = await tx.select({ id: productBundleSlots.id }).from(productBundleSlots)
+          .where(eq(productBundleSlots.bundleProductId, bundleProductId));
+        for (const row of existing) await tx.delete(productBundleSlotOptions).where(eq(productBundleSlotOptions.slotId, row.id));
+        await tx.delete(productBundleSlots).where(eq(productBundleSlots.bundleProductId, bundleProductId));
+        for (const [sortOrder, slot] of slots.entries()) {
+          const [created] = await tx.insert(productBundleSlots).values({
+            bundleProductId, slotKey: slot.slotKey, label: slot.label,
+            quantity: slot.quantity, allowCustomerChoice: slot.allowCustomerChoice, sortOrder,
+          }).returning();
+          if (slot.options.length) await tx.insert(productBundleSlotOptions).values(
+            slot.options.map((opt, i) => ({ slotId: created.id, componentProductId: opt.componentProductId, componentVariantId: opt.componentVariantId, sortOrder: i })),
+          );
+        }
+      });
+    },
+
+    /** New-architecture grants only (the join table) — see effectiveEntitlementGrants for the union with the legacy scalar. */
+    async entitlementGrants(productId: string): Promise<string[]> {
+      const d = requireDb();
+      const rows = await d.select({ key: productEntitlementGrants.entitlementKey }).from(productEntitlementGrants)
+        .where(eq(productEntitlementGrants.productId, productId));
+      return rows.map((r) => r.key);
+    },
+    /** Transactional delete-then-insert, same pattern as replaceBundleSlots/replaceVariants. Validated against KNOWN_ENTITLEMENTS — never stores an unrecognized key. */
+    async replaceEntitlementGrants(productId: string, keys: string[]) {
+      const invalid = keys.filter((k) => !isKnownEntitlementKey(k));
+      if (invalid.length) throw new Error(`Unknown entitlement key(s): ${invalid.join(", ")}`);
+      const unique = [...new Set(keys)];
+      const d = requireDb();
+      await d.transaction(async (tx) => {
+        await tx.delete(productEntitlementGrants).where(eq(productEntitlementGrants.productId, productId));
+        if (unique.length) await tx.insert(productEntitlementGrants).values(unique.map((entitlementKey) => ({ productId, entitlementKey })));
+      });
+    },
+    /**
+     * Effective grant set for a product — union of the new join table and the legacy scalar
+     * `products.grantsEntitlement` column, deduplicated. This is what checkout/bundle pricing
+     * calls to resolve what a purchase actually grants; the legacy Networking Kit continues
+     * to work via its scalar value with zero CMS changes required.
+     */
+    async effectiveEntitlementGrants(productId: string): Promise<string[]> {
+      const d = requireDb();
+      const [product] = await d.select({ legacy: products.grantsEntitlement }).from(products).where(eq(products.id, productId)).limit(1);
+      const rows = await d.select({ key: productEntitlementGrants.entitlementKey }).from(productEntitlementGrants)
+        .where(eq(productEntitlementGrants.productId, productId));
+      const keys = new Set(rows.map((r) => r.key));
+      if (product?.legacy) keys.add(product.legacy);
+      return [...keys];
+    },
+  },
+
+  entitlements: {
+    async has(userId: string | null | undefined, key: string): Promise<boolean> {
+      if (!userId) return false;
+      const d = requireDb();
+      const [row] = await d.select({ id: entitlements.id }).from(entitlements)
+        .where(and(eq(entitlements.userId, userId), eq(entitlements.key, key), eq(entitlements.revoked, false))).limit(1);
+      return Boolean(row);
+    },
+    /** Idempotent — granting an already-held entitlement is a no-op. */
+    async grant(userId: string, key: string, sourceOrderId?: string | null) {
+      const d = requireDb();
+      await d.insert(entitlements).values({ userId, key, sourceOrderId: sourceOrderId ?? null })
+        .onConflictDoNothing({ target: [entitlements.userId, entitlements.key] });
+    },
+    /**
+     * Grants every distinct entitlement key snapshotted onto a paid order's line items.
+     * The snapshot (orderItems.grantsEntitlement) was stamped server-side at checkout by
+     * the bundle-pricing path in src/lib/cart.ts — never re-derived from client input here.
+     */
+    /**
+     * Union of the legacy scalar snapshot (orderItems.grantsEntitlement — every order ever
+     * created before or after the multi-entitlement foundation) and the new join-table
+     * snapshot (order_item_entitlement_grants). Both are immutable purchase-time truth;
+     * neither is re-derived from current product config. Historical orders are never
+     * backfilled — they simply have an empty new-table side and the union degrades to
+     * exactly today's single-key behavior.
+     */
+    async grantForPaidOrder(orderId: string, userId: string | null | undefined): Promise<string[]> {
+      if (!userId) return []; // guest checkout — buyer must sign in/link the order later (Phase 1 limitation)
+      const d = requireDb();
+      const items = await d.select({ id: orderItems.id, grantsEntitlement: orderItems.grantsEntitlement }).from(orderItems).where(eq(orderItems.orderId, orderId));
+      const legacyKeys = items.map((i) => i.grantsEntitlement).filter(Boolean) as string[];
+      const itemIds = items.map((i) => i.id);
+      const newRows = itemIds.length
+        ? await d.select({ key: orderItemEntitlementGrants.entitlementKey }).from(orderItemEntitlementGrants)
+          .where(sql`${orderItemEntitlementGrants.orderItemId} = any(${itemIds})`)
+        : [];
+      const keys = [...new Set([...legacyKeys, ...newRows.map((r) => r.key)])];
+      for (const key of keys) await this.grant(userId, key, orderId);
+      return keys;
     },
   },
 
@@ -160,13 +285,39 @@ export const repo = {
   purposes: {
     async list() {
       const d = requireDb();
-      return d.select().from(purposeOptions).orderBy(asc(purposeOptions.sortOrder));
+      const rows = await d.select().from(purposeOptions).orderBy(asc(purposeOptions.sortOrder));
+      const imageIds = rows.map((row) => row.imageMediaId).filter((id): id is string => !!id);
+      const images = imageIds.length ? await d.select().from(media).where(and(inArray(media.id, imageIds), eq(media.active, true))) : [];
+      return rows.map((row) => ({ ...row, image: images.find((item) => item.id === row.imageMediaId) ?? null }));
+    },
+    /** Inserts default rows for purpose keys not yet in the table; never overwrites operator edits. */
+    async seedMissing(defaults: (typeof purposeOptions.$inferInsert)[]) {
+      const d = requireDb();
+      if (defaults.length) await d.insert(purposeOptions).values(defaults).onConflictDoNothing({ target: purposeOptions.key });
     },
     async update(id: string, input: Partial<typeof purposeOptions.$inferInsert>) {
       const d = requireDb();
       const [row] = await d.update(purposeOptions)
         .set({ ...input, updatedAt: new Date() })
         .where(eq(purposeOptions.id, id)).returning();
+      return row;
+    },
+  },
+
+  demoSamples: {
+    /** Rows with their portrait/reel media resolved (inactive media ignored). */
+    async list() {
+      const d = requireDb();
+      const rows = await d.select().from(demoSamples).orderBy(asc(demoSamples.sortOrder));
+      const ids = rows.flatMap((row) => [row.portraitMediaId, row.reelMediaId]).filter((id): id is string => !!id);
+      const items = ids.length ? await d.select().from(media).where(and(inArray(media.id, ids), eq(media.active, true))) : [];
+      const find = (id: string | null) => items.find((item) => item.id === id) ?? null;
+      return rows.map((row) => ({ ...row, portrait: find(row.portraitMediaId), reel: find(row.reelMediaId) }));
+    },
+    async upsert(key: string, input: Partial<Omit<typeof demoSamples.$inferInsert, "id" | "key">>) {
+      const d = requireDb();
+      const [row] = await d.insert(demoSamples).values({ key, ...input })
+        .onConflictDoUpdate({ target: demoSamples.key, set: { ...input, updatedAt: new Date() } }).returning();
       return row;
     },
   },
@@ -208,6 +359,8 @@ export const repo = {
     },
   },
 
+  // Legacy "Snap Track — NFC tracking" waitlist (teaser removed; SnapTrack is now the athlete/cheer
+  // Talent Profile brand). Kept only so the existing table stays readable.
   snapTrack: {
     async subscribe(email: string, locale: string) {
       const d = requireDb();
@@ -220,7 +373,7 @@ export const repo = {
       orderNumber: string; email: string; phone?: string; userId?: string;
       checkoutRequestId?: string;
       subtotal: number; total: number; address?: Omit<Address, "id" | "createdAt">;
-      items: Omit<OrderItem, "id" | "orderId">[];
+      items: (Omit<OrderItem, "id" | "orderId"> & { entitlementGrants?: string[] })[];
     }): Promise<Order> {
       const d = requireDb();
       return d.transaction(async (tx) => {
@@ -231,7 +384,15 @@ export const repo = {
           subtotal: input.subtotal, total: input.total,
           paymentState: "pending", fulfillmentState: "unfulfilled",
         }).returning();
-        if (input.items.length) await tx.insert(orderItems).values(input.items.map((item) => ({ ...item, orderId: order.id })));
+        // Inserted one at a time (not a single multi-row INSERT) so each returned id can be
+        // reliably paired with the entitlement grants that belong to that specific line —
+        // multi-row RETURNING order isn't a guarantee we want to depend on here.
+        for (const { entitlementGrants, ...item } of input.items) {
+          const [row] = await tx.insert(orderItems).values({ ...item, orderId: order.id }).returning({ id: orderItems.id });
+          if (entitlementGrants?.length) {
+            await tx.insert(orderItemEntitlementGrants).values(entitlementGrants.map((entitlementKey) => ({ orderItemId: row.id, entitlementKey })));
+          }
+        }
         return order;
       });
     },
@@ -723,4 +884,206 @@ export const repo = {
       return rows.map(({ lead, username, displayName }) => ({ ...lead, profileUsername: username, profileDisplayName: displayName }));
     },
   },
+
+  /**
+   * NETWORKING LEADS — a Solo owner's private rolodex (business card scans + manual
+   * connections). Every query/mutation is owner-scoped in the WHERE clause itself, never
+   * just in the caller — see docs/NETWORKING.md "Owner isolation".
+   */
+  networkingLeads: {
+    async listByUser(userId: string, opts?: { query?: string; filter?: "today" | "week" | "followup" }) {
+      const d = requireDb();
+      const conditions = [eq(networkingLeads.userId, userId)];
+      if (opts?.query) {
+        const q = `%${opts.query.trim()}%`;
+        conditions.push(or(
+          ilike(networkingLeads.displayName, q), ilike(networkingLeads.company, q),
+          ilike(networkingLeads.email, q), ilike(networkingLeads.phone, q),
+        )!);
+      }
+      const now = new Date();
+      if (opts?.filter === "today") {
+        const start = new Date(now); start.setHours(0, 0, 0, 0);
+        const end = new Date(now); end.setHours(23, 59, 59, 999);
+        conditions.push(gte(networkingLeads.createdAt, start), lte(networkingLeads.createdAt, end));
+      } else if (opts?.filter === "week") {
+        const start = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
+        conditions.push(gte(networkingLeads.createdAt, start));
+      } else if (opts?.filter === "followup") {
+        conditions.push(sql`${networkingLeads.followUpAt} is not null`);
+      }
+      return d.select().from(networkingLeads).where(and(...conditions)).orderBy(desc(networkingLeads.createdAt));
+    },
+    /** Ownership is enforced in the WHERE clause — a non-owner id lookup returns undefined, never another user's row. */
+    async byId(id: string, userId: string) {
+      const d = requireDb();
+      const [row] = await d.select().from(networkingLeads).where(and(eq(networkingLeads.id, id), eq(networkingLeads.userId, userId))).limit(1);
+      return row;
+    },
+    async create(userId: string, input: Omit<typeof networkingLeads.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">) {
+      const d = requireDb();
+      const [row] = await d.insert(networkingLeads).values({ ...input, userId }).returning();
+      return row;
+    },
+    async update(id: string, userId: string, fields: Partial<Omit<NetworkingLead, "id" | "userId" | "createdAt">>) {
+      const d = requireDb();
+      const [row] = await d.update(networkingLeads).set({ ...fields, updatedAt: new Date() })
+        .where(and(eq(networkingLeads.id, id), eq(networkingLeads.userId, userId))).returning();
+      return row;
+    },
+    async delete(id: string, userId: string) {
+      const d = requireDb();
+      const [row] = await d.delete(networkingLeads).where(and(eq(networkingLeads.id, id), eq(networkingLeads.userId, userId))).returning({ id: networkingLeads.id });
+      return Boolean(row);
+    },
+    /** Basic exact-match dedupe on normalized email/phone, scoped to this owner only. */
+    async findDuplicate(userId: string, contact: { email?: string; phone?: string }) {
+      const d = requireDb();
+      const matches = [
+        contact.email ? eq(networkingLeads.email, contact.email) : undefined,
+        contact.phone ? eq(networkingLeads.phone, contact.phone) : undefined,
+      ].filter(Boolean);
+      if (!matches.length) return undefined;
+      const [row] = await d.select().from(networkingLeads).where(and(eq(networkingLeads.userId, userId), or(...matches))).limit(1);
+      return row;
+    },
+  },
+
+  /** NETWORKING SETTINGS — CMS singleton toggle row, same operator-editable-table pattern as pricingPlans/purposeOptions. */
+  networkingSettings: {
+    async get(): Promise<NetworkingSettings> {
+      const d = requireDb();
+      const [row] = await d.select().from(networkingSettings).where(eq(networkingSettings.id, "global")).limit(1);
+      return row ?? {
+        id: "global", networkingEnabled: true, cardScannerEnabled: true,
+        manualConnectionsEnabled: true, followUpEnabled: true, updatedAt: new Date(),
+      };
+    },
+    async update(fields: Partial<Omit<NetworkingSettings, "id" | "updatedAt">>) {
+      const d = requireDb();
+      const [row] = await d.insert(networkingSettings).values({ id: "global", ...fields })
+        .onConflictDoUpdate({ target: networkingSettings.id, set: { ...fields, updatedAt: new Date() } })
+        .returning();
+      return row;
+    },
+  },
+
+  /**
+   * RESUME (Phase 3) — every query is owner-scoped in the WHERE clause itself, matching the
+   * Phase 2 networkingLeads standard. Section tables (experience/education/…) don't carry
+   * ownerUserId directly, so every section mutation verifies ownership via a subquery against
+   * resumeProfiles rather than trusting the resumeProfileId passed in — see docs/RESUME.md.
+   */
+  resume: {
+    async getOwned(profileId: string, userId: string): Promise<ResumeProfile | undefined> {
+      const d = requireDb();
+      const [row] = await d.select().from(resumeProfiles)
+        .where(and(eq(resumeProfiles.profileId, profileId), eq(resumeProfiles.ownerUserId, userId))).limit(1);
+      return row;
+    },
+    async getOwnedById(id: string, userId: string): Promise<ResumeProfile | undefined> {
+      const d = requireDb();
+      const [row] = await d.select().from(resumeProfiles)
+        .where(and(eq(resumeProfiles.id, id), eq(resumeProfiles.ownerUserId, userId))).limit(1);
+      return row;
+    },
+    /** Public read — no owner check, but requires publicEnabled=true. */
+    async getPublic(profileId: string): Promise<ResumeProfile | undefined> {
+      const d = requireDb();
+      const [row] = await d.select().from(resumeProfiles)
+        .where(and(eq(resumeProfiles.profileId, profileId), eq(resumeProfiles.publicEnabled, true))).limit(1);
+      return row;
+    },
+    async getOrCreateForProfile(profileId: string, userId: string): Promise<ResumeProfile> {
+      const d = requireDb();
+      const existing = await this.getOwned(profileId, userId);
+      if (existing) return existing;
+      const [row] = await d.insert(resumeProfiles).values({ profileId, ownerUserId: userId })
+        .onConflictDoNothing({ target: resumeProfiles.profileId }).returning();
+      return row ?? (await this.getOwned(profileId, userId))!;
+    },
+    async update(id: string, userId: string, fields: Partial<Omit<ResumeProfile, "id" | "profileId" | "ownerUserId" | "createdAt">>) {
+      const d = requireDb();
+      const [row] = await d.update(resumeProfiles).set({ ...fields, updatedAt: new Date() })
+        .where(and(eq(resumeProfiles.id, id), eq(resumeProfiles.ownerUserId, userId))).returning();
+      return row;
+    },
+
+    experience: resumeSectionRepo(resumeExperience),
+    education: resumeSectionRepo(resumeEducation),
+    skills: resumeSectionRepo(resumeSkills),
+    certifications: resumeSectionRepo(resumeCertifications),
+    languages: resumeSectionRepo(resumeLanguages),
+    projects: resumeSectionRepo(resumeProjects),
+  },
+
+  resumeSettings: {
+    async get(): Promise<ResumeSettings> {
+      const d = requireDb();
+      const [row] = await d.select().from(resumeSettings).where(eq(resumeSettings.id, "global")).limit(1);
+      if (row) return row;
+      // Same shape as the column defaults — feature works before an operator ever visits
+      // /operator/resume, matching the networkingSettings fallback pattern.
+      const [inserted] = await d.insert(resumeSettings).values({ id: "global" }).onConflictDoNothing().returning();
+      if (inserted) return inserted;
+      const [refetched] = await d.select().from(resumeSettings).where(eq(resumeSettings.id, "global")).limit(1);
+      return refetched;
+    },
+    async update(fields: Partial<Omit<ResumeSettings, "id" | "updatedAt">>) {
+      const d = requireDb();
+      const [row] = await d.insert(resumeSettings).values({ id: "global", ...fields })
+        .onConflictDoUpdate({ target: resumeSettings.id, set: { ...fields, updatedAt: new Date() } })
+        .returning();
+      return row;
+    },
+  },
 };
+
+/**
+ * Factory shared by every resume section table (experience/education/skills/certifications/
+ * languages/projects) — identical shape (id, resumeProfileId, sortOrder, visible + own
+ * fields), so this avoids six near-duplicate CRUD blocks. Ownership is enforced by a
+ * subquery against resumeProfiles.ownerUserId on every mutation, not just the read path.
+ */
+function resumeSectionRepo<TTable extends PgTable & {
+  id: { name: string }; resumeProfileId: { name: string }; sortOrder: { name: string }; visible: { name: string };
+}>(table: TTable) {
+  type Row = TTable["$inferSelect"];
+  type Insert = TTable["$inferInsert"];
+  const col = table as unknown as { id: typeof resumeExperience.id; resumeProfileId: typeof resumeExperience.resumeProfileId; sortOrder: typeof resumeExperience.sortOrder; visible: typeof resumeExperience.visible };
+
+  async function ownsResumeProfile(resumeProfileId: string, userId: string) {
+    const d = requireDb();
+    const [row] = await d.select({ id: resumeProfiles.id }).from(resumeProfiles)
+      .where(and(eq(resumeProfiles.id, resumeProfileId), eq(resumeProfiles.ownerUserId, userId))).limit(1);
+    return Boolean(row);
+  }
+
+  return {
+    /** List is scoped by resumeProfileId only — callers must have already verified ownership of that resumeProfileId (e.g. via repo.resume.getOwned). */
+    async list(resumeProfileId: string): Promise<Row[]> {
+      const d = requireDb();
+      return d.select().from(table as PgTable).where(eq(col.resumeProfileId, resumeProfileId)).orderBy(asc(col.sortOrder)) as Promise<Row[]>;
+    },
+    async create(resumeProfileId: string, userId: string, input: Omit<Insert, "id" | "resumeProfileId">): Promise<Row | undefined> {
+      if (!(await ownsResumeProfile(resumeProfileId, userId))) return undefined;
+      const d = requireDb();
+      const [row] = await d.insert(table as PgTable).values({ ...input, resumeProfileId } as Insert).returning();
+      return row as Row;
+    },
+    async update(id: string, resumeProfileId: string, userId: string, fields: Partial<Omit<Insert, "id" | "resumeProfileId">>): Promise<Row | undefined> {
+      if (!(await ownsResumeProfile(resumeProfileId, userId))) return undefined;
+      const d = requireDb();
+      const [row] = await d.update(table as PgTable).set(fields as Partial<Insert>)
+        .where(and(eq(col.id, id), eq(col.resumeProfileId, resumeProfileId))).returning();
+      return row as Row | undefined;
+    },
+    async delete(id: string, resumeProfileId: string, userId: string): Promise<boolean> {
+      if (!(await ownsResumeProfile(resumeProfileId, userId))) return false;
+      const d = requireDb();
+      const [row] = await d.delete(table as PgTable)
+        .where(and(eq(col.id, id), eq(col.resumeProfileId, resumeProfileId))).returning({ id: col.id });
+      return Boolean(row);
+    },
+  };
+}

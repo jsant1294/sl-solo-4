@@ -9,13 +9,19 @@ import { repo } from "@/db/repo";
 import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
-export default async function Activate({ searchParams }: { searchParams: Promise<{ lang?: string; sim?: string; product?: string }> }) {
+export default async function Activate({ searchParams }: { searchParams: Promise<{ lang?: string; sim?: string; product?: string; device?: string }> }) {
   const sp = await searchParams;
   const locale = localeFrom(sp);
   const t = getDict(locale);
+  const deviceCode = typeof sp.device === "string" ? sp.device.slice(0, 64) : undefined;
+  const self = `/activate${deviceCode ? `?device=${encodeURIComponent(deviceCode)}` : ""}`;
   const uid = await getSessionUserId();
-  if (!uid) redirect("/sign-in?next=/activation");
+  if (!uid) redirect(`/sign-in?next=${encodeURIComponent(self)}`);
   const profiles = await listMyProfiles();
+  // Activation requires an existing profile as the claim target. Rather than fail mysteriously
+  // (claimDevice would just error "Profile destination is missing"), send the customer through
+  // the existing profile-creation flow first and bring them straight back here afterward.
+  if (profiles.length === 0) redirect(`/app/create?next=${encodeURIComponent(self)}`);
   const devices = db ? await repo.devices.byAssignedUser(uid) : [];
   return (
     <>
@@ -25,7 +31,10 @@ export default async function Activate({ searchParams }: { searchParams: Promise
           <h1 className="font-display text-3xl font-semibold tracking-tight text-center">{t.activate.title}</h1>
           <p className="text-ink-soft text-center mt-3">{t.activate.sub}</p>
           <div className="mt-10">
-            <ActivationFlow locale={locale} profiles={profiles.map((profile) => ({ id: profile.id, displayName: profile.displayName, username: profile.username }))} devices={devices.map((device) => ({ code: device.deviceCode, status: device.status, label: device.label ?? device.type }))} />
+            <ActivationFlow locale={locale}
+              initialCode={deviceCode}
+              profiles={profiles.map((profile) => ({ id: profile.id, displayName: profile.displayName, username: profile.username }))}
+              devices={devices.map((device) => ({ code: device.deviceCode, status: device.status, label: device.label ?? device.type }))} />
           </div>
         </div>
       </Section>

@@ -115,6 +115,9 @@ export async function updateProfileData(profileId: string, dataInput: unknown): 
   try {
     const p = await requireOwnedProfile(profileId);
     const validated = validateProfileData((p as { type: string }).type as ProfileType, dataInput);
+    // Talent snapshots are writable only through the revision-checked Talent Studio action.
+    delete (validated as Record<string, unknown>).talent;
+    if (p && p.data && "talent" in p.data) (validated as Record<string, unknown>).talent = p.data.talent;
     if (db) await repo.profiles.update(profileId, { data: validated } as Record<string, unknown>);
     else (p as { data: unknown }).data = validated;
     return { ok: true };

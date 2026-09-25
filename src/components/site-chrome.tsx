@@ -3,7 +3,6 @@ import type { Locale } from "@/i18n/dict";
 import { getDict } from "@/i18n/dict";
 import { withLang } from "@/i18n/util";
 import { Wordmark, Button, LocaleToggle, MobileNav } from "./ui";
-import { SnapTrackTeaser } from "./snap-track-teaser";
 
 export function SiteHeader({ locale }: { locale: Locale }) {
   const t = getDict(locale);
@@ -73,7 +72,6 @@ export function SiteFooter({ locale }: { locale: Locale }) {
         <Link href={L("/terms")} className="text-xs text-ink-faint hover:text-ink no-underline">{t.footer.terms}</Link>
         <Link href="/operator" className="text-xs text-ink-faint/70 hover:text-ink-faint no-underline ml-auto">{t.footer.operatorLogin}</Link>
       </div>
-      <SnapTrackTeaser locale={locale}/>
     </footer>
   );
 }

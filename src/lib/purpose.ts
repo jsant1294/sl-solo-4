@@ -1,7 +1,7 @@
 import type { HomeProduct } from "@/components/home-experiences";
 import type { PurposeOption } from "@/db/schema";
 
-export type PurposeKey = "personal" | "creator" | "professional" | "share" | "protect" | "kids";
+export type PurposeKey = "personal" | "sports" | "stage" | "creator" | "professional" | "share" | "protect" | "kids";
 
 export type Purpose = {
   key: PurposeKey;
@@ -16,6 +16,10 @@ export type Purpose = {
   secondaryHref: string;
   privacyPoints?: { t: string; tEs: string; b: string; bEs: string }[];
   characterTeaser?: string[];
+  /** Operator-uploaded card image; falls back to the top recommended product photo. */
+  image?: { url: string; alt: string; objectPosition: string } | null;
+  example?: { href: string; label: string; labelEs: string } | null;
+  start?: { href: string; label: string; labelEs: string } | null;
 };
 
 /**
@@ -26,8 +30,10 @@ export type Purpose = {
  */
 const purposeStructure: Record<PurposeKey, { types: string[]; preferredSlugs: string[] }> = {
   personal: { types: ["personal"], preferredSlugs: ["phone-tag", "nfc-card", "keychain"] },
+  sports: { types: ["personal", "creator"], preferredSlugs: ["bracelet", "keychain", "phone-tag", "nfc-card"] },
+  stage: { types: ["personal", "creator"], preferredSlugs: ["nfc-card", "phone-tag", "keychain"] },
   creator: { types: ["creator"], preferredSlugs: ["nfc-card", "phone-tag", "keychain"] },
-  professional: { types: ["professional", "business"], preferredSlugs: ["nfc-card", "phone-tag", "table-stand"] },
+  professional: { types: ["professional", "business"], preferredSlugs: ["networking-kit", "nfc-card", "phone-tag", "table-stand"] },
   share: { types: ["personal", "creator"], preferredSlugs: ["phone-tag", "nfc-card", "keychain"] },
   protect: { types: ["personal", "kids"], preferredSlugs: ["keychain", "bracelet", "kids-backpack-tag"] },
   kids: { types: ["kids"], preferredSlugs: ["kids-backpack-tag", "bracelet"] },
@@ -50,6 +56,38 @@ const demoPurposeContent: Omit<Purpose, "types" | "preferredSlugs">[] = [
     secondaryHref: "/hardware",
   },
   {
+    key: "sports",
+    title: "SnapTrack", titleEs: "SnapTrack",
+    tagline: "For athletes & cheer — your reel, stats and milestones, one tap for coaches and recruiters.",
+    taglineEs: "Para atletas y animación — tu video, estadísticas y logros, un toque para entrenadores y reclutadores.",
+    color: "gold",
+    headline: "Your journey. Your record. One tap.",
+    headlineEs: "Tu camino. Tu historial. Un toque.",
+    description: "SnapTrack keeps your highlight reel, stats and milestones in one place — you update them all season as you grow. One tap puts it all in front of coaches and recruiters, with a clear contact button (a coach or guardian for minors).",
+    descriptionEs: "SnapTrack reúne tu video destacado, tus estadísticas y tus logros en un solo lugar — tú los actualizas toda la temporada a medida que creces. Un toque lo pone frente a entrenadores y reclutadores, con un botón de contacto claro (entrenador o tutor para menores).",
+    chips: ["Highlight reel", "Stats & results", "Recruiting contact", "Guardian contact", "Cheer & dance", "English & Spanish"],
+    chipsEs: ["Video destacado", "Estadísticas y logros", "Contacto de reclutamiento", "Contacto del tutor", "Animación y danza", "Español e inglés"],
+    secondaryHref: "/hardware",
+    example: { href: "/examples/athlete", label: "See a SnapTrack example", labelEs: "Ver un ejemplo de SnapTrack" },
+    start: { href: "/get-started?path=athlete", label: "Start your SnapTrack", labelEs: "Empieza tu SnapTrack" },
+  },
+  {
+    key: "stage",
+    title: "Performing arts", titleEs: "Artes escénicas",
+    tagline: "Reel, credits and talent sheet for auditions and agents.",
+    taglineEs: "Reel, créditos y ficha de talento para audiciones y agentes.",
+    color: "pink",
+    headline: "Your reel, one tap from the casting table.",
+    headlineEs: "Tu reel, a un toque de la mesa de casting.",
+    description: "Actors and dancers share a Talent Profile with a featured reel, portfolio, credits and a talent sheet — routed to you, your agent or your manager.",
+    descriptionEs: "Actores y bailarines comparten un Perfil de Talento con reel destacado, portafolio, créditos y ficha de talento — dirigido a ti, tu agente o tu mánager.",
+    chips: ["Reel", "Portfolio", "Credits", "Training", "Talent sheet", "Agent contact"],
+    chipsEs: ["Reel", "Portafolio", "Créditos", "Formación", "Ficha de talento", "Contacto de agente"],
+    secondaryHref: "/hardware",
+    example: { href: "/examples/actor", label: "See an actor example", labelEs: "Ver ejemplo de actor" },
+    start: { href: "/get-started?path=actor", label: "Create your Talent Profile", labelEs: "Crea tu Perfil de Talento" },
+  },
+  {
     key: "creator",
     title: "Creator", titleEs: "Creador",
     tagline: "Send people to your content, socials, portfolio, store and work.",
@@ -62,20 +100,24 @@ const demoPurposeContent: Omit<Purpose, "types" | "preferredSlugs">[] = [
     chips: ["Instagram", "TikTok", "YouTube", "Portfolio", "Website", "Store", "Booking", "WhatsApp", "Save Contact"],
     chipsEs: ["Instagram", "TikTok", "YouTube", "Portafolio", "Sitio web", "Tienda", "Reservas", "WhatsApp", "Guardar contacto"],
     secondaryHref: "/hardware",
+    example: { href: "/examples/combined", label: "See a multi-talent example", labelEs: "Ver ejemplo multitalento" },
+    start: { href: "/get-started?path=creator", label: "Create yours", labelEs: "Crea el tuyo" },
   },
   {
     key: "professional",
     title: "Professional", titleEs: "Profesional",
-    tagline: "Turn introductions into opportunities and make follow-up easy.",
-    taglineEs: "Convierte presentaciones en oportunidades y facilita el seguimiento.",
+    tagline: "Nurses, realtors, consultants — credentials, resume and easy follow-up.",
+    taglineEs: "Enfermería, bienes raíces, consultores — credenciales, currículum y seguimiento fácil.",
     color: "blue",
-    headline: "Make the next step easy.",
-    headlineEs: "Facilita el siguiente paso.",
-    description: "Share your contact details, booking link and work in one tap — SOLO Professional stays SOLO.",
-    descriptionEs: "Comparte tu contacto, enlace de reservas y trabajo en un toque — SOLO Profesional sigue siendo SOLO.",
-    chips: ["Call", "Text", "Email", "WhatsApp", "Website", "LinkedIn", "Booking", "Save Contact", "Share Profile"],
-    chipsEs: ["Llamar", "Mensaje", "Correo", "WhatsApp", "Sitio web", "LinkedIn", "Reservas", "Guardar contacto", "Compartir perfil"],
+    headline: "Meet. Tap. Scan. Follow up.",
+    headlineEs: "Conoce. Toca. Escanea. Da seguimiento.",
+    description: "Share your contact details, booking link and work in one tap. Scan the business cards you receive and keep every introduction in one place — with the SnapLink Networking Kit. No monthly fee.",
+    descriptionEs: "Comparte tu contacto, enlace de reservas y trabajo en un toque. Escanea las tarjetas de presentación que recibas y mantén cada introducción en un solo lugar — con el Kit de Networking SnapLink. Sin cuota mensual.",
+    chips: ["Call", "Text", "Email", "WhatsApp", "Website", "LinkedIn", "Booking", "Save Contact", "Share Profile", "Business Card Scanner", "Professional Resume"],
+    chipsEs: ["Llamar", "Mensaje", "Correo", "WhatsApp", "Sitio web", "LinkedIn", "Reservas", "Guardar contacto", "Compartir perfil", "Escáner de tarjetas", "Currículum profesional"],
     secondaryHref: "/hardware",
+    example: { href: "/examples/nurse", label: "See a nurse example", labelEs: "Ver ejemplo de enfermería" },
+    start: { href: "/get-started?path=professional", label: "Build your resume", labelEs: "Crea tu currículum" },
   },
   {
     key: "share",
@@ -129,8 +171,26 @@ const demoPurposeContent: Omit<Purpose, "types" | "preferredSlugs">[] = [
 
 export const purposes: Purpose[] = demoPurposeContent.map((p) => ({ ...p, ...purposeStructure[p.key] }));
 
+/** Default CMS rows for any purpose missing from purpose_options (operator page seeds these). */
+export function defaultPurposeRows() {
+  return demoPurposeContent.map((p, sortOrder) => ({
+    id: `purpose_${p.key}`, key: p.key, sortOrder, active: true,
+    titleEn: p.title, titleEs: p.titleEs, taglineEn: p.tagline, taglineEs: p.taglineEs,
+    headlineEn: p.headline, headlineEs: p.headlineEs, descriptionEn: p.description, descriptionEs: p.descriptionEs,
+    chipsEn: p.chips, chipsEs: p.chipsEs, color: p.color, secondaryHref: p.secondaryHref,
+    privacyPointsEn: p.privacyPoints?.map(({ t, b }) => ({ t, b })) ?? null,
+    privacyPointsEs: p.privacyPoints?.map(({ tEs, bEs }) => ({ t: tEs, b: bEs })) ?? null,
+    characterTeaser: p.characterTeaser ?? null,
+    exampleHref: p.example?.href ?? null, exampleLabelEn: p.example?.label ?? null, exampleLabelEs: p.example?.labelEs ?? null,
+    startHref: p.start?.href ?? null, startLabelEn: p.start?.label ?? null, startLabelEs: p.start?.labelEs ?? null,
+  }));
+}
+
 /** Merges CMS-editable content rows with code-defined structural matching logic. */
-export function purposesFromRows(rows: PurposeOption[]): Purpose[] {
+type PurposeRow = PurposeOption & { image?: { url: string; alt: string | null; objectPosition: string } | null };
+const action = (href: string | null, en: string | null, es: string | null) => href ? { href, label: en || es || href, labelEs: es || en || href } : null;
+
+export function purposesFromRows(rows: PurposeRow[]): Purpose[] {
   return rows.filter((row) => row.active).map((row) => {
     const key = row.key as PurposeKey;
     const privacyPoints = row.privacyPointsEn && row.privacyPointsEs
@@ -150,9 +210,20 @@ export function purposesFromRows(rows: PurposeOption[]): Purpose[] {
       secondaryHref: row.secondaryHref,
       privacyPoints,
       characterTeaser: row.characterTeaser ?? undefined,
+      image: row.image ? { url: row.image.url, alt: row.image.alt ?? "", objectPosition: row.image.objectPosition } : null,
+      example: action(row.exampleHref, row.exampleLabelEn, row.exampleLabelEs),
+      start: action(row.startHref, row.startLabelEn, row.startLabelEs),
       ...purposeStructure[key],
     };
   });
+}
+
+/** CMS rows win; any purpose key with no row yet (e.g. newly added) falls back to its default. */
+export function purposesWithDefaults(rows: PurposeRow[]): Purpose[] {
+  const present = new Set(rows.map((row) => row.key));
+  const fromRows = purposesFromRows(rows).map((purpose) => ({ purpose, order: rows.find((row) => row.key === purpose.key)!.sortOrder }));
+  const missing = purposes.map((purpose, order) => ({ purpose, order })).filter(({ purpose }) => !present.has(purpose.key));
+  return [...fromRows, ...missing].sort((a, b) => a.order - b.order).map(({ purpose }) => purpose);
 }
 
 export function recommendedProducts(purpose: Purpose, products: HomeProduct[]): HomeProduct[] {

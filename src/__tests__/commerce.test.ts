@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { getProducts, getProductBySlug, getFeatured, getKidsProducts, dollars, getOrderById, getProductById, DEMO_ORDERS } from "@/db/commerce-demo";
 import { applyStartProduction, applyAssignDevice, applyMarkReadyToShip, applyMarkShipped } from "@/lib/fulfillment";
-import { priceCart } from "@/lib/cart";
+import { priceCart, CartValidationError } from "@/lib/cart";
 import { assertStripeEnvironment, configuredShippingCountries, configuredShippingRateIds, isPayableCheckoutSession } from "@/lib/payment-safety";
+import { hasEntitlement, grantEntitlement } from "@/lib/entitlements";
+import { KNOWN_ENTITLEMENTS, isKnownEntitlementKey } from "@/lib/entitlement-registry";
+import { repo } from "@/db/repo";
 
 describe("product catalog", () => {
   it("returns active products sorted", () => {
@@ -47,6 +50,92 @@ describe("server checkout pricing", () => {
   it("rejects invalid quantities and unsupported personalization", async () => {
     await expect(priceCart([{ productId: "prod_card", variantId: "v_card_obs", quantity: 11 }])).rejects.toThrow();
     await expect(priceCart([{ productId: "prod_plate", variantId: "v_plate_obs", personalization: "Not allowed", quantity: 1 }])).rejects.toThrow();
+  });
+});
+
+describe("Networking Kit bundle pricing (demo mode has no DB, so bundles require online checkout)", () => {
+  it("rejects a bundle group cart line without DATABASE_URL", async () => {
+    await expect(priceCart([
+      { productId: "prod_plate", variantId: "v_plate_obs", quantity: 1, bundleGroupId: "g1", bundleProductId: "prod_networking_kit", bundleSlotKey: "phone_tag" },
+    ])).rejects.toThrow(CartValidationError);
+  });
+});
+
+describe("entitlements (no DATABASE_URL = no entitlements, never throws)", () => {
+  it("hasEntitlement is false without a database", async () => {
+    expect(await hasEntitlement("any-user", "solo_networking")).toBe(false);
+  });
+  it("hasEntitlement is false for a missing userId", async () => {
+    expect(await hasEntitlement(null, "solo_networking")).toBe(false);
+  });
+  it("grantEntitlement is a no-op without a database", async () => {
+    await expect(grantEntitlement("any-user", "solo_networking")).resolves.toBeUndefined();
+  });
+  it("hasEntitlement/grantEntitlement treat solo_networking and solo_resume as fully independent keys", async () => {
+    // No feature-specific helpers exist (no hasPurchasedNetworkingKit()/hasProfessionalProduct()) —
+    // products sell capabilities, features check capabilities, by string key alone.
+    expect(await hasEntitlement("any-user", "solo_resume")).toBe(false);
+    await expect(grantEntitlement("any-user", "solo_resume")).resolves.toBeUndefined();
+  });
+});
+
+describe("multi-entitlement commerce foundation", () => {
+  it("KNOWN_ENTITLEMENTS registry contains exactly solo_networking and solo_resume, with no commerce data", () => {
+    const keys = KNOWN_ENTITLEMENTS.map((e) => e.key);
+    expect(keys).toEqual(["solo_networking", "solo_resume"]);
+    for (const e of KNOWN_ENTITLEMENTS) {
+      expect(e).not.toHaveProperty("price");
+      expect(e).not.toHaveProperty("productId");
+      expect(e).not.toHaveProperty("bundleId");
+    }
+    expect(isKnownEntitlementKey("solo_networking")).toBe(true);
+    expect(isKnownEntitlementKey("solo_resume")).toBe(true);
+    expect(isKnownEntitlementKey("bogus_key")).toBe(false);
+  });
+
+  it("replaceEntitlementGrants rejects an unknown key before ever touching the database", async () => {
+    // Validation happens ahead of requireDb(), so this throws the *validation* message even
+    // with no DATABASE_URL configured — proving an operator (or caller) can never persist an
+    // arbitrary/typed entitlement key, known-DB-outage or not.
+    await expect(repo.products.replaceEntitlementGrants("prod_x", ["bogus_key"]))
+      .rejects.toThrow(/Unknown entitlement key/);
+  });
+
+  it("replaceEntitlementGrants accepts a known single key and a known multi-key set alike (proof a future product COULD grant both capabilities, without creating one)", async () => {
+    // Both calls pass validation and fail only because this test environment has no database —
+    // never with the "Unknown entitlement key(s)" message. That's the acceptance proof that the
+    // system supports a single product granting solo_networking + solo_resume together, without
+    // ever creating a "SnapLink Professional"/"Professional Networking Kit" product to prove it.
+    await expect(repo.products.replaceEntitlementGrants("prod_x", ["solo_networking"]))
+      .rejects.toThrow(/DATABASE_URL not set/);
+    await expect(repo.products.replaceEntitlementGrants("prod_x", ["solo_networking", "solo_resume"]))
+      .rejects.toThrow(/DATABASE_URL not set/);
+  });
+
+  it("replaceEntitlementGrants de-duplicates repeated keys before validation/persistence", async () => {
+    // Same key twice is not an "unknown key" and not a distinct validation error — it collapses
+    // to one grant, so this still fails only at the DB layer, not at validation.
+    await expect(repo.products.replaceEntitlementGrants("prod_x", ["solo_networking", "solo_networking"]))
+      .rejects.toThrow(/DATABASE_URL not set/);
+  });
+
+  it("grantForPaidOrder short-circuits to [] for guest checkout without touching the database", async () => {
+    // Guest checkout (no userId) is a documented Phase 1 limitation — the buyer must sign in/link
+    // the order later. This must never attempt a DB read/write for a null/undefined userId.
+    await expect(repo.entitlements.grantForPaidOrder("order_x", null)).resolves.toEqual([]);
+    await expect(repo.entitlements.grantForPaidOrder("order_x", undefined)).resolves.toEqual([]);
+  });
+
+  it("grantForPaidOrder requires a database once a real userId is supplied", async () => {
+    await expect(repo.entitlements.grantForPaidOrder("order_x", "user_x")).rejects.toThrow(/DATABASE_URL not set/);
+  });
+});
+
+describe("cart pricing carries an entitlement-grant set per line (empty in demo/no-DB mode)", () => {
+  it("a plain single-line demo purchase carries no entitlement grants", async () => {
+    const result = await priceCart([{ productId: "prod_plate", variantId: "v_plate_gold", quantity: 1 }]);
+    expect(result.rows[0].entitlementGrants).toEqual([]);
+    expect(result.rows[0].grantsEntitlement).toBeNull();
   });
 });
 

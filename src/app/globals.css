@@ -89,6 +89,24 @@
   --shadow-lg: 0 24px 60px hsl(0 0% 0% / 0.55);
 }
 
+/* — Signature gold (Talent Profile theme): warm black, gold-forward — */
+[data-theme="signature_gold"] {
+  --bg: 30 14% 6%;
+  --bg-raised: 32 16% 10%;
+  --bg-sunken: 30 14% 4%;
+  --ink: 42 40% 94%;
+  --ink-soft: 40 16% 70%;
+  --ink-faint: 40 10% 50%;
+  --line: 38 30% 22%;
+  --line-strong: 40 45% 34%;
+  --gold: 43 70% 58%;
+  --gold-bright: 44 80% 66%;
+  --gold-ink: 43 70% 82%;
+  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.3);
+  --shadow-md: 0 6px 18px hsl(0 0% 0% / 0.4);
+  --shadow-lg: 0 24px 60px hsl(0 0% 0% / 0.55);
+}
+
 * { box-sizing: border-box; }
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 

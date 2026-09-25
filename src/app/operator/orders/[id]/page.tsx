@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { inArray } from "drizzle-orm";
 import { dollars } from "@/db/commerce-demo";
 import { data } from "@/lib/data";
 import { FulfillmentActions } from "./fulfillment-ui";
 import { db } from "@/db";
 import { repo } from "@/db/repo";
+import { profiles } from "@/db/schema";
 import { repairShippingAddress } from "../../fulfillment-actions";
 import { requireOperator } from "@/lib/operator";
 export const dynamic = "force-dynamic";
@@ -16,6 +18,14 @@ export default async function OrderDetail({ params, searchParams }: { params: Pr
   const o = await data.orderById(id);
   if (!o) notFound();
   const itemDevices = new Map((await Promise.all(o.items.map(async (item) => item.deviceId && db ? repo.devices.byId(item.deviceId) : undefined))).filter(Boolean).map((device) => [device!.id, device!]));
+  // Lets the operator answer "did this customer activate their SnapLink?" without SQL — reuses
+  // the same devices/profiles data the customer-facing activation flow relies on, no new schema.
+  const claimedProfileIds = [...new Set([...itemDevices.values()].map((d) => d.profileId).filter((x): x is string => Boolean(x)))];
+  const profilesById = new Map<string, { displayName: string }>();
+  if (db && claimedProfileIds.length) {
+    const rows = await db.select({ id: profiles.id, displayName: profiles.displayName }).from(profiles).where(inArray(profiles.id, claimedProfileIds));
+    for (const r of rows) profilesById.set(r.id, r);
+  }
 
   const timeline = [
     { label: "Order placed", at: o.createdAt },
@@ -47,7 +57,10 @@ export default async function OrderDetail({ params, searchParams }: { params: Pr
           )}
           <Panel title="Items">
             <div className="flex flex-col gap-3">
-              {o.items.map((it) => (
+              {o.items.map((it) => {
+                const device = it.deviceId ? itemDevices.get(it.deviceId) : undefined;
+                const profile = device?.profileId ? profilesById.get(device.profileId) : undefined;
+                return (
                 <div key={it.id} className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">{it.quantity}× {it.productName}</p>
@@ -62,11 +75,24 @@ export default async function OrderDetail({ params, searchParams }: { params: Pr
                         </p>
                       </div>
                     )}
-                    <p className="text-xs mt-1">{it.deviceId ? <span className="text-ok font-mono">Device {it.deviceId} · {itemDevices.get(it.deviceId)?.status ?? "unknown"}</span> : <span className="text-warn">Device not assigned</span>}</p>
+                    {!device && <p className="text-xs mt-1 text-warn">Device not assigned</p>}
+                    {device && device.status === "paired" && (
+                      <p className="text-xs mt-1 font-mono text-ok">
+                        Device {device.deviceCode} · Active
+                        {profile && ` · Profile: ${profile.displayName}`}
+                        {device.activatedAt && ` · Activated ${new Date(device.activatedAt).toLocaleDateString()}`}
+                      </p>
+                    )}
+                    {device && device.status !== "paired" && (
+                      <p className="text-xs mt-1 font-mono text-warn">
+                        Device {device.deviceCode} · {device.status === "assigned" ? "Assigned — waiting for customer activation" : device.status}
+                      </p>
+                    )}
                   </div>
                   <span className="font-mono text-sm">{dollars(it.unitPrice)}</span>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </Panel>
         </div>

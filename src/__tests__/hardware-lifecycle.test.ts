@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assignmentError, canResolvePhysicalDevice, claimError, fulfillmentIssueForPaidOrder, isValidDeviceCode, normalizeDeviceCode } from "@/lib/device-lifecycle";
+import { assignmentError, canResolvePhysicalDevice, claimError, classifyUnresolvedTouchpoint, fulfillmentIssueForPaidOrder, isValidDeviceCode, normalizeDeviceCode } from "@/lib/device-lifecycle";
 import { priceCart } from "@/lib/cart";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -67,4 +67,40 @@ describe("hardware purchase snapshots and shipping safety", () => {
   it("places a paid physical order on hold when shipping persistence fails", () => expect(fulfillmentIssueForPaidOrder(true, false)).toBe("shipping_address_missing"));
   it("does not place non-shipping orders on hold", () => expect(fulfillmentIssueForPaidOrder(false, false)).toBeNull());
   it("clears the issue after required shipping persists", () => expect(fulfillmentIssueForPaidOrder(true, true)).toBeNull());
+});
+
+describe("/t/{deviceCode} unresolved-tap classification (the physical activation dead-end fix)", () => {
+  it("keeps an unknown/invalid device code a 404", () => {
+    expect(classifyUnresolvedTouchpoint({ deviceExists: false, viewerUserId: null })).toEqual({ kind: "not_found" });
+    expect(classifyUnresolvedTouchpoint({ deviceExists: false, viewerUserId: "user-a" })).toEqual({ kind: "not_found" });
+  });
+  it("routes an unauthenticated visitor of a valid assigned device into the activation journey (sign-in gate handles auth)", () => {
+    expect(classifyUnresolvedTouchpoint({ deviceExists: true, status: "assigned", assignedUserId: "user-a", viewerUserId: null }))
+      .toEqual({ kind: "needs_activation" });
+  });
+  it("routes the correctly authenticated owner into the activation journey", () => {
+    expect(classifyUnresolvedTouchpoint({ deviceExists: true, status: "assigned", assignedUserId: "user-a", viewerUserId: "user-a" }))
+      .toEqual({ kind: "needs_activation" });
+  });
+  it("never lets a different authenticated account activate someone else's device", () => {
+    expect(classifyUnresolvedTouchpoint({ deviceExists: true, status: "assigned", assignedUserId: "user-a", viewerUserId: "user-b" }))
+      .toEqual({ kind: "wrong_account" });
+  });
+  it.each(["unclaimed", "disabled", "lost", "replaced", "paired"] as const)("treats a %s device (unresolved by definition here) as not-found, not an activation invitation", (status) => {
+    expect(classifyUnresolvedTouchpoint({ deviceExists: true, status, assignedUserId: "user-a", viewerUserId: "user-a" })).toEqual({ kind: "not_found" });
+    expect(classifyUnresolvedTouchpoint({ deviceExists: true, status, assignedUserId: "user-a", viewerUserId: null })).toEqual({ kind: "not_found" });
+  });
+});
+
+describe("customer hardware page no longer depends on demo fixtures", () => {
+  it("does not import DEMO_DEVICES", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/app/app/hardware/page.tsx"), "utf8");
+    expect(source).not.toMatch(/DEMO_DEVICES/);
+    expect(source).toMatch(/byAssignedUser/);
+  });
+  it("scopes the dashboard's device summary to the signed-in user's own devices, not demo fixtures", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/app/app/page.tsx"), "utf8");
+    expect(source).not.toMatch(/DEMO_DEVICES/);
+    expect(source).toMatch(/byAssignedUser/);
+  });
 });

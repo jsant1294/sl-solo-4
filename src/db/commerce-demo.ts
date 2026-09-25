@@ -17,7 +17,7 @@ const P = (o: Partial<DemoProduct> & Pick<DemoProduct, "id" | "slug" | "name" | 
   videoId: null, videoPosterId: null, personalizationOptions: [],
   inventoryMode: "infinite", stockStatus: "in_stock", profileTypesSupported: [],
   activationInstructions: null, fulfillmentNotes: null, seoTitle: null,
-  seoDescription: null, createdAt: new Date(), updatedAt: new Date(), variants: [], ...o,
+  seoDescription: null, grantsEntitlement: null, createdAt: new Date(), updatedAt: new Date(), variants: [], ...o,
 });
 
 export const DEMO_PRODUCTS: DemoProduct[] = [
@@ -110,7 +110,7 @@ export const DEMO_ORDERS: (Order & { items: OrderItem[]; address: Address | null
     stripePaymentIntentId: null, stripeRefundId: null, trackingNumber: null, trackingCarrier: null, paidAt: new Date("2025-04-01T10:00:00"), refundedAt: null,
     shippedAt: null, deliveredAt: null, createdAt: new Date("2025-04-01T09:58:00"),
     address: { id: "addr_1", name: "Maria Rivera", line1: "123 Peachtree St", line2: null, city: "Atlanta", region: "GA", postal: "30303", country: "US", phone: "+14045550101", createdAt: new Date() },
-    items: [{ id: "oi_1", orderId: "ord_1", productId: "prod_bracelet", variantId: "v_brace_pnk", hardwareProductId: "prod_bracelet", hardwareVariantId: "v_brace_pnk", skuSnapshot: "BR-PNK", productName: "Bracelet", variantLabel: "Pink", personalization: "Mia", customArtPriceCents: null, customArtNotes: null, customArtFileUrl: null, quantity: 1, unitPrice: 3400, deviceId: null }],
+    items: [{ id: "oi_1", orderId: "ord_1", productId: "prod_bracelet", variantId: "v_brace_pnk", hardwareProductId: "prod_bracelet", hardwareVariantId: "v_brace_pnk", skuSnapshot: "BR-PNK", productName: "Bracelet", variantLabel: "Pink", personalization: "Mia", customArtPriceCents: null, customArtNotes: null, customArtFileUrl: null, quantity: 1, unitPrice: 3400, deviceId: null, bundleGroupId: null, grantsEntitlement: null }],
   },
 ];
 

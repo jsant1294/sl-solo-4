@@ -83,6 +83,18 @@ export async function markShipped(orderId: string, tracking: string, carrier: st
   revalidatePath(`/operator/orders/${orderId}`);
 }
 
+/** Manual — no shipping-carrier webhook exists to trigger this automatically. Trivial, safe
+ * addition so the order timeline isn't permanently stuck at "shipped" (deliveredAt/"delivered"
+ * had no code path setting them before this). */
+export async function markDelivered(orderId: string) {
+  await requireOperator();
+  if (db) {
+    const o = await repo.orders.byId(orderId);
+    if (o && o.fulfillmentState === "shipped") await repo.orders.setFulfillment(orderId, "delivered", { deliveredAt: new Date() });
+  }
+  revalidatePath(`/operator/orders/${orderId}`);
+}
+
 export async function refundOrder(orderId: string, confirmation: string) {
   await requireOperator();
   if (!db) return { ok: false as const, error: "Database required" };

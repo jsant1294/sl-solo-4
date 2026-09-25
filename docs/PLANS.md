@@ -46,6 +46,23 @@ and the kids/leads flows works the same for every tier.
   when that changes, not because it's in progress.
 - Any actual feature gate. Nothing in the app reads `users.plan` to allow/deny anything yet.
 
+## Entitlements are a separate system from plans — do not conflate them
+
+The Networking Kit introduced the first real feature gate in the app: perpetual, per-purchase
+capability unlocks checked via `hasEntitlement`/`grantEntitlement`
+(`src/lib/entitlements.ts`), materialized from paid orders into the `entitlements` table. This is
+**not** the `users.plan`/`pricing_plans` system described above — buying the $99 Networking Kit
+once keeps its capability forever, it isn't a subscription tier, and `users.plan` still gates
+nothing and remains `"free"` for everyone.
+
+This started as a single scalar column (`products.grantsEntitlement`) and has since grown into a
+full multi-capability pipeline — **frozen and fully documented in `docs/COMMERCE.md` under
+"Entitlements — multi-capability commerce architecture"**: `PRODUCT → CAPABILITY SET → ORDER
+SNAPSHOT → MATERIALIZED USER ENTITLEMENTS → hasEntitlement(userId, capability)`. Read that section
+for the current shape (registry, join tables, bundle carrier-line invariant) before touching
+anything entitlement-related — this note only exists to keep the two systems (`plans` vs.
+`entitlements`) from being conflated. Don't merge them into one concept without re-reading both docs.
+
 ## Before wiring an actual gate
 
 1. Confirm the gate doesn't take anything away from a user already on Free — grandfather

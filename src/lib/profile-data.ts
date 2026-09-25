@@ -126,6 +126,7 @@ export const PROFILE_SECTIONS = [
   { id: "identity", label: "Identity" },
   { id: "bio", label: "About / Bio" },
   { id: "quickActions", label: "Quick actions + contact orb" },
+  { id: "resume", label: "Resume / Career" },
   { id: "featuredLinks", label: "Featured links" },
   { id: "socialLinks", label: "Social links" },
   { id: "moreLinks", label: "More links" },
@@ -133,6 +134,7 @@ export const PROFILE_SECTIONS = [
 ] as const;
 export type ProfileSectionId = typeof PROFILE_SECTIONS[number]["id"];
 export type ProfileSectionConfig = { id: string; visible: boolean; sortOrder: number };
+export type ResumeCta = { headline: string | null; ctaLabel: string; href: string } | null;
 
 /** Merge stored config over the authoritative catalog; always complete. */
 export function getProfilePresentation(data: unknown): ProfileSectionConfig[] {

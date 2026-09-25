@@ -16,7 +16,7 @@ const TYPES = (locale: Locale) => [
 
 const KIDS_ACCENTS = ["#E86FA6", "#5B8DEF", "#3FBF8F", "#F0A63C", "#9B6BDB"];
 
-export function CreateFlow({ locale }: { locale: Locale }) {
+export function CreateFlow({ locale, next }: { locale: Locale; next?: string }) {
   const t = getDict(locale);
   const router = useRouter();
   const [type, setType] = useState<ProfileType | null>(null);
@@ -35,7 +35,10 @@ export function CreateFlow({ locale }: { locale: Locale }) {
     if (!type || !name.trim() || normalizeUsername(username).length < 3) return;
     setBusy(true);
     const res = await createProfile(type, name.trim(), normalizeUsername(username), type === "kids" ? accent : undefined);
-    if (res.ok) router.push(withLang(`/app/profiles/${res.profileId}`, locale));
+    // `next` was already validated server-side (safeAppRedirect, see /app/create/page.tsx) —
+    // e.g. hardware activation sends the customer here when they have no profile yet, then
+    // wants them back at /activate?device=... afterward instead of the normal profile editor.
+    if (res.ok) router.push(next ? withLang(next, locale) : withLang(`/app/profiles/${res.profileId}`, locale));
     else { setBusy(false); alert(res.error); }
   }
 

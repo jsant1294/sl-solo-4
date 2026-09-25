@@ -1,3 +1,5 @@
+import { hasTalent } from "@/lib/talent/model";
+import { talentLabels } from "@/lib/talent/labels";
 import { notFound } from "next/navigation";
 import { localeFrom } from "@/i18n/util";
 import { requireOwnedProfile, AuthError, ForbiddenError } from "@/lib/auth";
@@ -36,6 +38,8 @@ export default async function ProfileStudio({
   const experience = getProfileExperience(p.data, p.id);
 
   return (
+    <>
+    {p.type !== "kids" && <aside className="mb-6 rounded-2xl border border-line p-5"><a className="font-display text-xl underline underline-offset-4" href={`/app/profiles/${p.id}/talent?lang=${locale}`}>{talentLabels[locale].enable} ↗</a>{hasTalent(p.data) && <p className="mt-2 text-sm text-ink-soft">{talentLabels[locale].enabled}</p>}</aside>}
     <StudioShell
       locale={locale}
       profile={{
@@ -52,5 +56,6 @@ export default async function ProfileStudio({
       }}
       devices={devices.map((device) => ({ id: device.id, label: device.label ?? device.deviceCode, type: device.type, status: device.status, deviceCode: device.deviceCode }))}
     />
+    </>
   );
 }

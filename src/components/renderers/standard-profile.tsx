@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { getDict, type Locale } from "@/i18n/dict";
 import type { Profile, ProfileLink } from "@/db/schema";
+import type { ResumeCta } from "@/lib/profile-data";
 import { getProfileExperience, getProfilePresentation, type StoredContactChannel } from "@/lib/profile-data";
 import { ContactSheet } from "@/app/u/[username]/contact-sheet";
 import { ContactOrb } from "@/components/contact-orb";
@@ -19,8 +20,8 @@ const themeClass: Record<string, string> = {
 
 /** Personal + Business share this renderer; Business shows category eyebrow. */
 export function StandardProfile({
-  profile, links, contactChannels, locale,
-}: { profile: Profile; links: ProfileLink[]; contactChannels: StoredContactChannel[]; locale: Locale }) {
+  profile, links, contactChannels, locale, resumeCta = null,
+}: { profile: Profile; links: ProfileLink[]; contactChannels: StoredContactChannel[]; locale: Locale; resumeCta?: ResumeCta }) {
   const t = getDict(locale);
   const initials = profile.displayName.split(" ").map((s) => s[0]).slice(0, 2).join("");
   const category = profile.type === "business"
@@ -69,6 +70,15 @@ const payments = publicPaymentMethods(settings.paymentMethods, locale);
     quickActions: (
       <ProfileQuickActions username={profile.username} actions={secondaryActions} payments={payments} locale={locale}/>
     ),
+    resume: resumeCta ? (
+      <Link href={withLang(resumeCta.href, locale)} className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-gold/40 bg-gold/5 px-4 py-3.5 no-underline text-ink transition-colors hover:border-gold">
+        <span className="min-w-0">
+          <span className="block text-[0.65rem] uppercase tracking-[0.18em] text-gold font-mono">{locale === "es" ? "Profesional" : "Professional"}</span>
+          {resumeCta.headline && <span className="block text-sm text-ink-soft truncate mt-0.5">{resumeCta.headline}</span>}
+        </span>
+        <span className="shrink-0 font-medium text-sm text-gold">{resumeCta.ctaLabel}</span>
+      </Link>
+    ) : null,
     featuredLinks: favorites.length > 0
       ? <div className="mt-5 flex flex-col gap-2">{favorites.map((link) => <ProfileLinkCard key={link.id} username={profile.username} link={link} featured/>)}</div>
       : null,

@@ -1,0 +1,1 @@
+ALTER TABLE "resume_experience" ALTER COLUMN "company" DROP NOT NULL;

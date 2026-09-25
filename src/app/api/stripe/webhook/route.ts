@@ -6,6 +6,7 @@ import { isPayableCheckoutSession, assertStripeEnvironment } from "@/lib/payment
 import type Stripe from "stripe";
 import { fulfillmentIssueForPaidOrder } from "@/lib/device-lifecycle";
 import { deliverPendingOrderNotifications } from "@/lib/order-notifications";
+import { grantEntitlement } from "@/lib/entitlements";
 
 function orderIdFor(session: Stripe.Checkout.Session) {
   const metadataId = session.metadata?.orderId;
@@ -75,6 +76,8 @@ async function completePaidSession(session: Stripe.Checkout.Session) {
     for (const item of order.items) {
       if (item.productId) await repo.commerce.record({ type: "purchase", productId: item.productId, orderId });
     }
+    const grantedKeys = await repo.entitlements.grantForPaidOrder(orderId, order.userId);
+    if (grantedKeys.length) await repo.commerce.record({ type: "networking_kit_purchased", orderId });
   }
   await deliverPendingOrderNotifications();
   return { ok: true, status: 200 };

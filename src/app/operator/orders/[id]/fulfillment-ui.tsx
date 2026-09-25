@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { startProduction, assignDevice, markReadyToShip, markShipped, refundOrder } from "../../fulfillment-actions";
+import { startProduction, assignDevice, markReadyToShip, markShipped, markDelivered, refundOrder } from "../../fulfillment-actions";
 
 interface OrderVM {
   id: string; orderNumber: string; fulfillmentState: string; paymentState: string;
@@ -58,8 +58,14 @@ export function FulfillmentActions({ order }: { order: OrderVM }) {
         </>
       )}
 
-      {(s === "shipped" || s === "delivered") && (
-        <p className="text-sm text-ok">Shipped{order.tracking ? ` · ${order.tracking}` : ""}</p>
+      {s === "shipped" && (
+        <>
+          <p className="text-sm text-ok">Shipped{order.tracking ? ` · ${order.tracking}` : ""}</p>
+          <Btn onClick={() => markDelivered(order.id)}>Mark delivered</Btn>
+        </>
+      )}
+      {s === "delivered" && (
+        <p className="text-sm text-ok">Delivered{order.tracking ? ` · ${order.tracking}` : ""}</p>
       )}
 
       <div className="mt-3 border-t border-line pt-4">

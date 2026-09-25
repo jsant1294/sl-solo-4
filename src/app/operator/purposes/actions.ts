@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { repo } from "@/db/repo";
 import { requireOperator } from "@/lib/operator";
+import { storage } from "@/lib/providers";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 const list = (input: string) => input.split(",").map((item) => item.trim()).filter(Boolean);
@@ -23,7 +24,7 @@ export async function savePurposeOption(form: FormData) {
     taglineEn: z.string().min(1), taglineEs: z.string().min(1),
     headlineEn: z.string().min(1), headlineEs: z.string().min(1),
     descriptionEn: z.string().min(1), descriptionEs: z.string().min(1),
-    color: z.enum(["coral", "violet", "blue", "aqua", "green", "yellow"]),
+    color: z.enum(["coral", "violet", "blue", "aqua", "green", "yellow", "pink", "gold"]),
     secondaryHref: destination,
     sortOrder: z.coerce.number().int().min(0),
   }).parse({
@@ -36,6 +37,24 @@ export async function savePurposeOption(form: FormData) {
     secondaryHref: value(form, "secondaryHref"),
     sortOrder: form.get("sortOrder"),
   });
+
+  const optionalDestination = (key: string) => { const href = value(form, key); return href ? destination.parse(href) : null; };
+  const exampleHref = optionalDestination("exampleHref");
+  const startHref = optionalDestination("startHref");
+
+  // Card image: a dropped-in upload wins, then the library pick; "" clears it.
+  let imageMediaId: string | null = value(form, "imageMediaId") || null;
+  const file = form.get("imageFile");
+  if (file instanceof File && file.size > 0) {
+    if (!file.type.startsWith("image/")) throw new Error("Card image must be an image file");
+    if (file.size > 7 * 1024 * 1024) throw new Error("Image is too large (max 7 MB)");
+    const uploaded = await storage.upload({ name: file.name, data: new Uint8Array(await file.arrayBuffer()), contentType: file.type });
+    const item = await repo.media.create({
+      url: uploaded.url, alt: value(form, "imageAlt") || parsed.titleEn, kind: "image", storageKey: uploaded.url, contentType: file.type,
+      objectPosition: value(form, "imagePosition") || "50% 50%", active: true, width: null, height: null,
+    });
+    imageMediaId = item.id;
+  }
 
   const privacyEn = points(value(form, "privacyPointsEn"));
   const privacyEs = points(value(form, "privacyPointsEs"));
@@ -55,8 +74,12 @@ export async function savePurposeOption(form: FormData) {
     privacyPointsEn: privacyEn.length ? privacyEn : null,
     privacyPointsEs: privacyEs.length ? privacyEs : null,
     characterTeaser: characters.length ? characters : null,
+    imageMediaId,
+    exampleHref, exampleLabelEn: value(form, "exampleLabelEn") || null, exampleLabelEs: value(form, "exampleLabelEs") || null,
+    startHref, startLabelEn: value(form, "startLabelEn") || null, startLabelEs: value(form, "startLabelEs") || null,
   });
   revalidatePath("/");
   revalidatePath("/operator/purposes");
+  revalidatePath("/operator/media");
   redirect(`/operator/purposes?saved=${encodeURIComponent(parsed.id)}`);
 }
