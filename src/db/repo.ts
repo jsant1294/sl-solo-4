@@ -1,4 +1,4 @@
-import { eq, and, or, inArray, gte, lte, desc, asc, isNull, sql, ilike } from "drizzle-orm";
+import { eq, and, or, inArray, gte, lte, lt, desc, asc, isNull, isNotNull, sql, ilike } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db } from "@/db";
 import {
@@ -16,6 +16,7 @@ import type {
 import type { PgTable } from "drizzle-orm/pg-core";
 import { getProfileExperience } from "@/lib/profile-data";
 import { assignmentError, canOperatorTransitionDevice, canResolvePhysicalDevice, isProvisionableDeviceCode, isValidDeviceCode, normalizeDeviceCode } from "@/lib/device-lifecycle";
+import type { PingSource } from "@/lib/device-lifecycle";
 import { isKnownEntitlementKey } from "@/lib/entitlement-registry";
 
 /**
@@ -27,6 +28,42 @@ function requireDb() {
   if (!db) throw new Error("DATABASE_URL not set — repo unavailable");
   return db;
 }
+
+/**
+ * "Is this row a physical Ping?" — a Ping is an activity_events row that a real device
+ * produced. Two independent conditions, on purpose:
+ *
+ *   1. ping_source IS NOT NULL — written only by /t/[token]. This is the definition,
+ *      and it is what keeps the profile_view fired by the very same tap out of Ping
+ *      history, even though its legacy `source` column may read "nfc"/"qr".
+ *   2. type IN ('tap','qr_scan') — belt-and-braces, so a non-physical event can never
+ *      surface as a Ping even if a row somehow carried a ping_source.
+ */
+const isPhysicalPing = and(
+  isNotNull(activityEvents.pingSource),
+  inArray(activityEvents.type, ["tap", "qr_scan"]),
+);
+
+/**
+ * Owner-facing Ping projection. Deliberately omits ip_hash and user_agent (pseudonymous
+ * / fingerprinting data that must never reach a customer surface) and omits internal
+ * ownership identifiers.
+ */
+const pingProjection = {
+  id: activityEvents.id,
+  deviceId: activityEvents.deviceId,
+  type: activityEvents.type,
+  pingSource: activityEvents.pingSource,
+  city: activityEvents.city,
+  region: activityEvents.region,
+  country: activityEvents.country,
+  createdAt: activityEvents.createdAt,
+};
+
+/** Bounded pagination — callers can never ask for an unbounded scan. */
+const boundedLimit = (requested: number | undefined, fallback: number, max: number) =>
+  Math.min(Math.max(requested ?? fallback, 1), max);
+
 
 export const repo = {
   commerce: {
@@ -831,6 +868,98 @@ export const repo = {
         total += Number(r.count);
       }
       return { byType, total };
+    },
+  },
+
+  /**
+   * PINGS — a physical touchpoint interaction with real hardware (NFC tap or QR scan).
+   *
+   * A Ping is an activity_events row carrying a non-null ping_source, and /t/[token] is
+   * the only writer. /d/ and /u/ leave it NULL, so the follow-up profile_view from the
+   * same tap is never counted as a second Ping. This namespace is the "foundation" seam
+   * for later phases: no cooldown, no digest, no notification.
+   *
+   * Geo columns stay NULL in v1 — no geo provider, and we never infer a visitor's
+   * location from profile data.
+   */
+  pings: {
+    /**
+     * Records one physical Ping. Called from an after() callback, so a failure here is
+     * caught and logged upstream and can never affect the visitor's redirect.
+     */
+    async record(input: {
+      deviceId: string;
+      profileId: string;
+      type: "tap" | "qr_scan";
+      pingSource: PingSource;
+      ipHash?: string | null;
+      userAgent?: string | null;
+    }) {
+      const d = requireDb();
+      await d.insert(activityEvents).values({
+        profileId: input.profileId,
+        deviceId: input.deviceId,
+        type: input.type,
+        // Keep the legacy column in step so existing `source` analytics stay compatible:
+        // qr/nfc keep their current meaning, and "unknown" is a new value rather than a
+        // relabel of anything already stored.
+        source: input.pingSource,
+        pingSource: input.pingSource,
+        city: null, region: null, country: null,
+        ipHash: input.ipHash ?? null,
+        userAgent: input.userAgent ?? null,
+      });
+    },
+    /**
+     * Denormalized "last seen" for a device. Best-effort and independent of the Ping
+     * INSERT: either write may fail without affecting the other, the redirect, or
+     * destination resolution. Guarded by deviceId alone because the caller is the
+     * trusted server-side resolver that already validated this device → destination →
+     * profile chain; the browser never supplies this id.
+     */
+    async touchDevice(deviceId: string) {
+      const d = requireDb();
+      await d.update(devices).set({ lastSeenAt: new Date() }).where(eq(devices.id, deviceId));
+    },
+
+    /** Most recent physical Ping for one device. Ownership enforced in SQL. */
+    async lastForDevice(deviceId: string, userId: string) {
+      const d = requireDb();
+      const [row] = await d.select(pingProjection)
+        .from(activityEvents)
+        .innerJoin(devices, eq(activityEvents.deviceId, devices.id))
+        .where(and(
+          eq(activityEvents.deviceId, deviceId),
+          eq(devices.assignedUserId, userId),
+          isPhysicalPing,
+        ))
+        .orderBy(desc(activityEvents.createdAt))
+        .limit(1);
+      return row;
+    },
+
+    /** Paginated physical Ping history for one device. Ownership enforced in SQL. */
+    async historyForDevice(deviceId: string, userId: string, opts?: { limit?: number; before?: Date }) {
+      const d = requireDb();
+      const conditions = [eq(activityEvents.deviceId, deviceId), eq(devices.assignedUserId, userId), isPhysicalPing];
+      if (opts?.before) conditions.push(lt(activityEvents.createdAt, opts.before));
+      return d.select(pingProjection)
+        .from(activityEvents)
+        .innerJoin(devices, eq(activityEvents.deviceId, devices.id))
+        .where(and(...conditions))
+        .orderBy(desc(activityEvents.createdAt))
+        .limit(boundedLimit(opts?.limit, 25, 100));
+    },
+
+    /** Recent physical Pings across every device this user owns. Ownership enforced in SQL. */
+    async recentForUser(userId: string, opts?: { limit?: number }) {
+      const d = requireDb();
+      return d.select(pingProjection)
+        .from(activityEvents)
+        .innerJoin(devices, eq(activityEvents.deviceId, devices.id))
+        .where(and(eq(devices.assignedUserId, userId), isPhysicalPing))
+        .orderBy(desc(activityEvents.createdAt))
+        .limit(boundedLimit(opts?.limit, 50, 200));
     },
   },
 

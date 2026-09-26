@@ -1,8 +1,11 @@
 import { notFound, redirect } from "next/navigation";
+import { after } from "next/server";
+import { headers } from "next/headers";
 import { db } from "@/db";
 import { repo } from "@/db/repo";
 import { getSessionUserId } from "@/lib/auth";
-import { classifyUnresolvedTouchpoint, isValidDeviceCode, normalizeDeviceCode } from "@/lib/device-lifecycle";
+import { classifyUnresolvedTouchpoint, isValidDeviceCode, normalizeDeviceCode, parseTouchpointSource, touchpointRedirectSource } from "@/lib/device-lifecycle";
+import { buildTouchpointPingInput, persistTouchpointPing } from "@/lib/touchpoint-ping";
 import { SiteHeader } from "@/components/site-chrome";
 import { Section } from "@/components/primitives";
 
@@ -21,9 +24,23 @@ export default async function PhysicalTouchpoint({
   const { s } = await searchParams;
   const resolved = await repo.devices.resolveTouchpoint(token);
   if (resolved) {
-    const source = s === "qr" ? "qr" : "nfc";
-    await repo.events.record(resolved.profile.id, source === "qr" ? "qr_scan" : "tap", source);
-    redirect(`/u/${resolved.profile.username}?src=${source}`);
+    // A bare /t/{code} tag URL carries no ?s=, and that is an NFC tap — see
+    // parseTouchpointSource. pingSource is the authoritative record of how the device
+    // was triggered; ?src= stays the legacy two-value qr|nfc contract.
+    const pingSource = parseTouchpointSource(s);
+    // Request metadata is captured here, on the critical path, so the after() callback
+    // needs no request scope of its own. Both helpers are in-memory: no geo lookup, no
+    // notification call, no extra query.
+    const ping = buildTouchpointPingInput({
+      deviceId: resolved.device.id,
+      profileId: resolved.profile.id,
+      pingSource,
+      headers: await headers(),
+    });
+    // Off the critical path: the visitor's redirect is never blocked by, or broken by,
+    // analytics. The Ping INSERT and the lastSeenAt refresh are independently guarded.
+    after(() => persistTouchpointPing(ping));
+    redirect(`/u/${resolved.profile.username}?src=${touchpointRedirectSource(pingSource)}`);
   }
 
   // Not resolvable as a live tap. Distinguish a genuinely unknown/invalid code (404) from a

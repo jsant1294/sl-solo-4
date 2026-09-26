@@ -25,6 +25,12 @@ export const linkTypeEnum = pgEnum("link_type", [
 export const activityTypeEnum = pgEnum("activity_type", [
   "tap", "qr_scan", "profile_view", "contact", "guardian_call_click",
 ]);
+/**
+ * pingSource — physical touchpoint provenance for a real device tap. Distinct from
+ * activity_type (what happened) and from the legacy overloaded `source` text column.
+ * NULL on every non-physical event, which is what makes "is this a Ping?" answerable.
+ */
+export const pingSourceEnum = pgEnum("ping_source", ["nfc", "qr", "unknown"]);
 export const orderStatusEnum = pgEnum("order_status", [
   "pending", "paid", "fulfilled", "canceled",
 ]);
@@ -191,16 +197,31 @@ export const devices = pgTable("devices", {
   assignedUserIdx: index("devices_assigned_user_idx").on(t.assignedUserId),
 }));
 
-/* — ActivityEvent — */
+/* — ActivityEvent —
+   `pingSource` is set ONLY by /t/[token] (the physical device resolver). Every other
+   event — /d/ analytics, /u/ profile_view, contact, funnel — leaves it NULL, so a
+   profile_view triggered by the very same tap can never be counted as a second Ping.
+   city/region/country are reserved for a future geo provider and stay NULL in v1;
+   we never infer a visitor's location from profile data. */
 export const activityEvents = pgTable("activity_events", {
   id: id(),
   profileId: text("profile_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   deviceId: text("device_id").references(() => devices.id, { onDelete: "set null" }),
   type: activityTypeEnum("type").notNull(),
   source: text("source"),
+  pingSource: pingSourceEnum("ping_source"),
+  city: text("city"),
+  region: text("region"),
+  country: text("country"),
+  /** HMAC-SHA256 of the client IP keyed with AUTH_SECRET. Pseudonymous — never a raw address. */
+  ipHash: text("ip_hash"),
+  userAgent: text("user_agent"),
   createdAt: now(),
 }, (t) => ({
   profileTimeIdx: index("activity_profile_time_idx").on(t.profileId, t.createdAt),
+  // Serves every per-device Ping read: lastForDevice, historyForDevice, and the
+  // recentForUser join+sort. Plain ASC because Postgres scans btree backwards for DESC.
+  deviceTimeIdx: index("activity_device_time_idx").on(t.deviceId, t.createdAt),
 }));
 
 /* — ContactLead — */

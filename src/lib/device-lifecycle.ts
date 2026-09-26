@@ -62,6 +62,47 @@ export function claimError(input: {
   return null;
 }
 
+/**
+ * Physical touchpoint provenance. Authoritative record of how a real device was
+ * triggered; distinct from the visitor-facing `?src=` redirect param, which stays a
+ * legacy two-value (qr|nfc) contract.
+ */
+export type PingSource = "nfc" | "qr" | "unknown";
+
+/**
+ * Classifies the `?s=` hint on /t/{deviceCode}.
+ *
+ * Hardware encodes a BARE /t/{code} URL, so a physically-tapped tag arrives with no
+ * query string at all — that is the common case and is an NFC tap. Only a printed QR
+ * code carries an explicit hint.
+ *
+ *   undefined / absent  → nfc   (bare physical tag URL)
+ *   "" (present, empty) → unknown (a deliberately present but invalid value)
+ *   "qr" / "nfc"        → as given (case/whitespace normalized)
+ *   anything else       → unknown
+ *
+ * No user-agent sniffing, no guessing: an explicit unrecognized value is recorded as
+ * unknown rather than being silently folded into a real source.
+ *
+ * Pure/DB-free by design, so the routing decision is unit-testable without a database.
+ */
+export function parseTouchpointSource(raw: string | undefined | null): PingSource {
+  if (raw === undefined || raw === null) return "nfc";
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "nfc") return "nfc";
+  if (normalized === "qr") return "qr";
+  return "unknown";
+}
+
+/**
+ * Visitor-facing `?src=` value for the /t/ → /u/ redirect. Deliberately lossy: an
+ * internal "unknown" Ping must never introduce a new visitor-facing source value, so
+ * it degrades to "nfc" — the same two-value qr|nfc contract that has always shipped.
+ */
+export function touchpointRedirectSource(pingSource: PingSource): "nfc" | "qr" {
+  return pingSource === "qr" ? "qr" : "nfc";
+}
+
 export function canResolvePhysicalDevice(input: {
   status: DeviceLifecycleStatus;
   destinationActive?: boolean;
